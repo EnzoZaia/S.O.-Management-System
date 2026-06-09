@@ -60,11 +60,11 @@
       <div class="flex justify-between items-end mb-3 px-1">
          <div class="flex flex-col">
            <span class="text-4xl font-black text-purple-600 leading-none">{{ dadosBrutos.tipo_manutencao.preventiva }}</span>
-           <span class="text-[10px] font-bold text-purple-400 uppercase tracking-wider mt-1">💜 Preventivas</span>
+           <span class="text-[10px] font-bold text-purple-400 uppercase tracking-wider mt-1"> Preventivas</span>
          </div>
          <div class="flex flex-col items-end">
            <span class="text-4xl font-black text-gray-600 leading-none">{{ dadosBrutos.tipo_manutencao.corretiva }}</span>
-           <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1">🔧 Corretivas</span>
+           <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1"> Corretivas</span>
          </div>
       </div>
 
