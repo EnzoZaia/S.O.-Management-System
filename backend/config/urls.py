@@ -25,7 +25,7 @@ from ordem_servico.views import OrdemServicoListCreateView, OrdemServicoRetrieve
 from predio.views import PredioListCreateView, PredioRetrieveUpdateDestroyView
 from authentication.views import TokenObtainPairView
 from rest_framework_simplejwt.views import TokenRefreshView, TokenVerifyView
-from ativo.views import AtivoListCreateView, AtivoRetrieveUpdateDestroyView
+from ativo.views import AtivoListCreateView, AtivoRetrieveUpdateDestroyView, AtivoHistoricoView # <--- Import atualizado aqui!
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -62,4 +62,5 @@ urlpatterns = [
     path('ativo/', AtivoListCreateView.as_view(), name='ativo-list-create'), # Endpoint para listar e criar ativos, acessível para usuários autenticados.
     path('ativo/<int:pk>/', AtivoRetrieveUpdateDestroyView.as_view(), name='ativo-detail-view'), # Endpoint para recuperar, atualizar e deletar um ativo específico, acessível para usuários autenticados. A atualização e exclusão são restritas a usuários com a permissão de gerente. 
     
+    path('ativo/<int:pk>/historico/', AtivoHistoricoView.as_view(), name='ativo-historico'), # <--- Endpoint NOVO para a linha do tempo do modal!
 ]

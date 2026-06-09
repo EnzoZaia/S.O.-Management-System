@@ -1,87 +1,115 @@
 <template>
   <div class="p-8">
-    <div class="mb-8 flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+    <div class="mb-8 flex flex-col justify-between items-start gap-4">
       <div>
         <h1 class="text-2xl font-bold text-gray-800">Gestão de Ativos</h1>
         <p class="text-sm text-gray-500 mt-1">Registe e gira os equipamentos da instituição para manutenções preventivas</p>
       </div>
       
-      <div class="flex items-center gap-4 w-full md:w-auto">
-        <div class="relative w-full md:w-72 lg:w-80">
+      <div class="w-full flex flex-col md:flex-row items-center gap-4 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+        
+        <div class="relative w-full md:flex-1">
           <span class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400 text-sm">🔍</span>
-          <input v-model="termoBusca" type="text" placeholder="Buscar por código, marca, modelo..." class="w-full bg-white border border-gray-200 text-gray-700 placeholder-gray-400 text-sm rounded-lg pl-9 pr-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 shadow-sm transition-all cursor-text" />
+          <input v-model="termoBusca" type="text" placeholder="Buscar por código, marca, modelo..." class="w-full bg-gray-50 border border-gray-200 text-gray-700 placeholder-gray-400 text-sm rounded-lg pl-9 pr-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 transition-all cursor-text" />
+        </div>
+
+        <div class="w-full md:w-64">
+          <select v-model="filtroPredioBusca" class="w-full bg-gray-50 border border-gray-200 text-gray-700 text-sm font-semibold rounded-lg px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer">
+            <option value="">Todos os Prédios/Blocos</option>
+            <option v-for="predio in listaPredios" :key="predio.id_predio || predio.id" :value="predio.id_predio || predio.id">
+              {{ predio.nome_predio || predio.nome }}
+            </option>
+          </select>
+        </div>
+
+        <div class="w-full md:w-56">
+          <select v-model="filtroStatusPreventiva" class="w-full bg-gray-50 border border-gray-200 text-gray-700 text-sm font-semibold rounded-lg px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer">
+            <option value="">Todos os Status</option>
+            <option value="atrasada">🔴 Preventiva Atrasada</option>
+            <option value="avencer">🟡 Vence em breve (&le; 15 dias)</option>
+            <option value="emdia">🟢 Preventiva em Dia</option>
+            <option value="semregistro">⚪ Sem Registro</option>
+          </select>
         </div>
         
-        <button @click="abrirModalNovo" class="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg shadow-md transition-colors cursor-pointer flex items-center gap-2 shrink-0">
+        <button v-if="!ehTecnico" @click="abrirModalNovo" class="w-full md:w-auto px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg shadow-md transition-colors cursor-pointer flex items-center justify-center gap-2 shrink-0">
           <span>+</span> Novo Ativo
         </button>
       </div>
     </div>
 
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-      <table class="w-full text-left border-collapse">
-        <thead>
-          <tr class="bg-gray-50 border-b border-gray-100 text-xs text-gray-500 uppercase tracking-wider">
-            <th class="p-4 font-semibold">Equipamento</th>
-            <th class="p-4 font-semibold">Identificação</th>
-            <th class="p-4 font-semibold">Preventiva</th>
-            <th class="p-4 font-semibold">Localização</th>
-            <th class="p-4 font-semibold text-center">Ações</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-if="loading" class="border-b border-gray-50"><td colspan="5" class="p-8 text-center text-gray-400 font-medium">A carregar ativos...</td></tr>
-          <tr v-else-if="ativosFiltrados.length === 0" class="border-b border-gray-50"><td colspan="5" class="p-8 text-center text-gray-400 font-medium">Nenhum ativo encontrado.</td></tr>
-          <tr v-else v-for="ativo in ativosFiltrados" :key="ativo.id_ativo || ativo.id" class="border-b border-gray-50 hover:bg-gray-50/80 transition-colors">
-            
-            <td class="p-4">
-              <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-lg bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 shrink-0">
-                  <span v-if="ativo.tipo_ativo === 'AR_CONDICIONADO'" class="text-xl">❄️</span>
-                  <span v-else class="text-xl">🖥️</span>
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden pb-4">
+      
+      <div v-if="loading" class="p-8 text-center text-gray-400 font-medium">A carregar ativos...</div>
+      <div v-else-if="Object.keys(ativosAgrupados).length === 0" class="p-8 text-center text-gray-400 font-medium">Nenhum ativo encontrado com os filtros atuais.</div>
+
+      <div v-else v-for="(ativosDoPredio, nomePredio) in ativosAgrupados" :key="nomePredio" class="mb-4">
+        
+        <div class="bg-gray-100/80 px-6 py-3 border-y border-gray-200 flex items-center justify-between sticky top-0 z-10">
+           <h3 class="font-bold text-gray-800 flex items-center gap-2 uppercase tracking-wider text-sm">
+             <span class="text-blue-600">🏢</span> {{ nomePredio }}
+           </h3>
+           <span class="text-xs font-bold text-gray-500 bg-white px-3 py-1 rounded-full border border-gray-200 shadow-sm">
+             {{ ativosDoPredio.length }} equipamento(s)
+           </span>
+        </div>
+
+        <table class="w-full text-left border-collapse">
+          <thead>
+            <tr class="text-[10px] text-gray-400 uppercase tracking-wider hidden sm:table-row">
+              <th class="px-6 py-2 font-semibold w-1/3">Equipamento</th>
+              <th class="px-6 py-2 font-semibold">Identificação</th>
+              <th class="px-6 py-2 font-semibold">Localização Exata</th>
+              <th class="px-6 py-2 font-semibold text-center">Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="ativo in ativosDoPredio" :key="ativo.id_ativo || ativo.id" class="border-b border-gray-50 hover:bg-blue-50/30 transition-colors group">
+              
+              <td class="px-6 py-4">
+                <div class="flex items-center gap-3">
+                  <div class="w-10 h-10 rounded-lg border flex items-center justify-center shrink-0 shadow-sm" :class="obterCorStatus(ativo).bg_icon">
+                    <span v-if="ativo.tipo_ativo === 'AR_CONDICIONADO'" class="text-xl">❄️</span>
+                    <span v-else class="text-xl">🖥️</span>
+                  </div>
+                  <div>
+                    <div class="text-sm font-bold text-gray-800">{{ ativo.marca }} {{ ativo.modelo }}</div>
+                    <div class="text-[10px] font-semibold mt-0.5" :class="obterCorStatus(ativo).text">
+                      {{ obterCorStatus(ativo).label }}
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <div class="text-sm font-bold text-gray-800">{{ ativo.marca }} {{ ativo.modelo }}</div>
-                  <div class="text-xs text-gray-500 mt-0.5">{{ formatarTipo(ativo.tipo_ativo) }}</div>
+              </td>
+
+              <td class="px-6 py-4">
+                <div class="flex flex-col gap-1">
+                  <span class="px-2 py-0.5 bg-gray-100 text-gray-700 rounded text-[10px] font-bold tracking-wider border border-gray-200 w-fit">
+                    PAT: {{ ativo.codigo_patrimonial || 'N/I' }}
+                  </span>
+                  <span class="text-[11px] text-gray-400 font-medium">SN: {{ ativo.numero_serial || 'N/I' }}</span>
                 </div>
-              </div>
-            </td>
+              </td>
 
-            <td class="p-4">
-              <div class="flex flex-col gap-1">
-                <span class="px-2 py-0.5 bg-gray-100 text-gray-700 rounded text-[10px] font-bold tracking-wider border border-gray-200 w-fit">
-                  PAT: {{ ativo.codigo_patrimonial || 'N/I' }}
-                </span>
-                <span class="text-xs text-gray-400 font-medium">SN: {{ ativo.numero_serial || 'N/I' }}</span>
-              </div>
-            </td>
+              <td class="px-6 py-4">
+                 <div class="flex items-center gap-2">
+                   <span class="text-gray-300">📍</span>
+                   <span class="text-sm font-medium text-gray-600">
+                     {{ gerarNomeSala(ativo) }}
+                   </span>
+                 </div>
+              </td>
 
-            <td class="p-4">
-              <div class="text-sm font-medium text-gray-700">A cada {{ ativo.periodicidade_preventiva_dias }} dias</div>
-              <div class="text-[11px] text-gray-500 mt-0.5" v-if="ativo.dt_proxima_preventiva">
-                Próxima: <span class="font-bold text-orange-500">{{ formatarData(ativo.dt_proxima_preventiva) }}</span>
-              </div>
-              <div class="text-[11px] text-gray-400 mt-0.5" v-else>
-                Última: {{ formatarData(ativo.dt_ultima_preventiva) || 'Sem registo' }}
-              </div>
-            </td>
-
-            <td class="p-4">
-               <div class="flex items-center gap-2">
-                 <span class="text-gray-400">📍</span>
-                 <span class="text-sm font-medium text-gray-600">
-                   {{ gerarNomeLocalizacao(ativo) }}
-                 </span>
-               </div>
-            </td>
-
-            <td class="p-4 text-center">
-              <button @click="abrirModalEdicao(ativo)" class="text-blue-600 hover:text-white hover:bg-blue-600 font-bold border border-blue-200 px-3 py-1.5 rounded-lg transition-all shadow-sm cursor-pointer mr-2">Editar</button>
-              <button @click="excluirAtivo(ativo.id_ativo || ativo.id)" class="text-red-600 hover:text-white hover:bg-red-600 font-bold border border-red-200 px-3 py-1.5 rounded-lg transition-all shadow-sm cursor-pointer">Remover</button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+              <td class="px-6 py-4 text-center">
+                <div class="flex items-center justify-center gap-2 transition-opacity">
+                  <button @click="abrirModalDetalhes(ativo)" class="text-indigo-600 hover:text-white hover:bg-indigo-600 font-bold border border-indigo-200 px-3 py-1.5 rounded-lg transition-all shadow-sm cursor-pointer">Detalhes</button>
+                  <button v-if="!ehTecnico" @click="abrirModalEdicao(ativo)" class="text-blue-600 hover:text-white hover:bg-blue-600 font-bold border border-blue-200 px-3 py-1.5 rounded-lg transition-all shadow-sm cursor-pointer">Editar</button>
+                  <button v-if="!ehTecnico" @click="excluirAtivo(ativo.id_ativo || ativo.id)" class="text-red-600 hover:text-white hover:bg-red-600 font-bold border border-red-200 px-3 py-1.5 rounded-lg transition-all shadow-sm cursor-pointer">Remover</button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
 
     <div v-if="modalAberto" @click.self="fecharModal" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 animate-fade-in">
@@ -131,6 +159,12 @@
               <label class="text-xs font-bold text-gray-500 uppercase tracking-wider">Preventiva (Dias) *</label>
               <input v-model.number="form.periodicidade_preventiva_dias" type="number" min="0" placeholder="Ex: 30" class="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all" />
             </div>
+
+            <div class="space-y-1.5">
+              <label class="text-xs font-bold text-gray-500 uppercase tracking-wider">Última Preventiva Realizada</label>
+              <input v-model="form.dt_ultima_preventiva" type="date" class="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all" />
+              <p class="text-[10px] text-gray-400">O sistema calculará a próxima automaticamente.</p>
+            </div>
           </div>
 
           <hr class="border-gray-100 my-2" />
@@ -163,21 +197,130 @@
         </div>
       </div>
     </div>
+
+    <div v-if="modalDetalhesAberto" @click.self="fecharModalDetalhes" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 animate-fade-in">
+      <div class="bg-white rounded-2xl w-full max-w-4xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+        
+        <div class="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50 shrink-0">
+          <div class="flex items-center gap-4">
+            <div class="w-12 h-12 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 text-2xl shadow-sm">
+              {{ ativoSelecionado?.tipo_ativo === 'AR_CONDICIONADO' ? '❄️' : '🖥️' }}
+            </div>
+            <div>
+              <p class="text-[10px] font-bold text-indigo-500 uppercase tracking-wider mb-0.5">Prontuário do Equipamento</p>
+              <h2 class="text-2xl font-black text-gray-800 leading-none">{{ ativoSelecionado?.marca }} {{ ativoSelecionado?.modelo }}</h2>
+            </div>
+          </div>
+          <button @click="fecharModalDetalhes" class="text-gray-400 hover:text-gray-700 p-2 rounded-full hover:bg-gray-200 transition-colors cursor-pointer">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+          </button>
+        </div>
+
+        <div class="p-6 overflow-y-auto bg-white space-y-6">
+          
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="md:col-span-2 grid grid-cols-2 gap-4 bg-gray-50 p-5 rounded-2xl border border-gray-100">
+              <div>
+                <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Patrimônio / Serial</p>
+                <p class="text-sm font-bold text-gray-800">PAT: {{ ativoSelecionado?.codigo_patrimonial }}</p>
+                <p class="text-xs text-gray-500">SN: {{ ativoSelecionado?.numero_serial || 'N/I' }}</p>
+              </div>
+              <div>
+                <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Localização Atual</p>
+                <p class="text-sm font-bold text-gray-800">{{ gerarNomeLocalizacao(ativoSelecionado) }}</p>
+              </div>
+            </div>
+
+            <div class="bg-indigo-50/50 p-5 rounded-2xl border border-indigo-100 flex flex-col justify-center relative overflow-hidden">
+              <div class="absolute -right-4 -bottom-4 opacity-10 text-6xl" :class="obterCorStatus(ativoSelecionado).text">
+                {{ obterCorStatus(ativoSelecionado).icon }}
+              </div>
+              <p class="text-[10px] font-black text-indigo-600 uppercase tracking-wider mb-2 z-10">Ciclo Preventivo ({{ ativoSelecionado?.periodicidade_preventiva_dias }} dias)</p>
+              <div class="flex justify-between items-end mb-2 z-10">
+                <span class="text-xs font-semibold text-gray-600">Última:</span>
+                <span class="text-sm font-bold text-gray-800">{{ ativoSelecionado?.dt_ultima_preventiva ? formatarData(ativoSelecionado.dt_ultima_preventiva) : 'Sem registo' }}</span>
+              </div>
+              <div class="flex justify-between items-end pt-2 border-t border-indigo-100 z-10">
+                <span class="text-xs font-semibold text-indigo-700">Próxima:</span>
+                <span class="text-sm font-black text-indigo-700">{{ ativoSelecionado?.dt_proxima_preventiva ? formatarData(ativoSelecionado.dt_proxima_preventiva) : 'A calcular...' }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <h3 class="text-sm font-bold text-gray-700 mb-4 flex items-center gap-2">
+              <span>⏱️</span> Histórico de Manutenções
+            </h3>
+            
+            <div class="bg-gray-50/50 rounded-2xl border border-gray-100 p-6">
+              <div v-if="loadingHistorico" class="text-center text-gray-400 font-medium py-8">A buscar registos...</div>
+              <div v-else-if="historicoAtivo.length === 0" class="text-center text-gray-400 font-medium py-8">Nenhuma manutenção registada para este equipamento ainda.</div>
+              
+              <div v-else class="relative border-l-2 border-indigo-200 ml-3 pl-6 space-y-6">
+                <div v-for="(evento, index) in historicoAtivo" :key="index" class="relative group">
+                  <div :class="evento.tipo_manutencao === 'PREVENTIVA' ? 'bg-purple-500' : 'bg-orange-500'" class="absolute w-3 h-3 rounded-full border-2 border-white -left-[31px] top-1.5 shadow-sm"></div>
+                  
+                  <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+                    <div class="flex justify-between items-start mb-2">
+                      <div class="flex items-center gap-2">
+                        <span :class="evento.tipo_manutencao === 'PREVENTIVA' ? 'bg-purple-100 text-purple-700' : 'bg-orange-100 text-orange-700'" class="text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider">
+                          {{ evento.tipo_manutencao }}
+                        </span>
+                        <span class="text-xs font-bold text-gray-800">OS #{{ evento.id_ordem_servico || 'N/I' }}</span>
+                      </div>
+                      <span class="text-[10px] font-bold text-gray-500 bg-gray-50 border border-gray-100 px-2 py-1 rounded-md">
+                        {{ formatarData(evento.data_conclusao || evento.dt_alteracao) }}
+                      </span>
+                    </div>
+                    
+                    <p class="text-sm text-gray-700 mt-2 italic">"{{ evento.descricao || evento.observacao || 'Sem detalhes fornecidos.' }}"</p>
+                    
+                    <div class="mt-3 pt-3 border-t border-gray-100 flex items-center gap-2">
+                      <span class="bg-gray-100 p-1 rounded text-gray-500 text-xs">👤</span>
+                      <span class="text-xs font-semibold text-gray-600">Técnico: {{ evento.tecnico_nome || 'N/I' }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import api from '@/services/api'
 import Swal from 'sweetalert2'
 
+const route = useRoute()
+
+const ehTecnico = computed(() => {
+  const urlTecnico = route.path.includes('tecnico')
+  const grupoTecnico = localStorage.getItem('grupo') === 'TECNICO'
+  return urlTecnico || grupoTecnico
+})
+
 const ativos = ref<any[]>([])
 const loading = ref(true)
+
 const termoBusca = ref('')
+const filtroPredioBusca = ref('')
+const filtroStatusPreventiva = ref('')
 
 const modalAberto = ref(false)
 const modoEdicao = ref(false)
 const salvando = ref(false)
+
+const modalDetalhesAberto = ref(false)
+const ativoSelecionado = ref<any>(null)
+const historicoAtivo = ref<any[]>([])
+const loadingHistorico = ref(false)
 
 const listaPredios = ref<any[]>([])
 const listaLocalizacoes = ref<any[]>([])
@@ -191,6 +334,7 @@ const form = ref({
   modelo: '',
   numero_serial: '',
   periodicidade_preventiva_dias: 30,
+  dt_ultima_preventiva: '', 
   id_localizacao: '' as number | string
 })
 
@@ -206,32 +350,91 @@ const formatarTipo = (tipo: string) => {
 
 const formatarData = (data: string) => {
   if (!data) return ''
-  return new Date(data).toLocaleDateString('pt-BR')
+  const safeData = data.includes('T') ? data : `${data}T12:00:00`
+  return new Date(safeData).toLocaleDateString('pt-BR')
+}
+
+function obterCorStatus(ativo: any) {
+  if (!ativo.dt_proxima_preventiva) {
+    return { bg_icon: 'bg-gray-50 border-gray-200 text-gray-400', text: 'text-gray-400', label: 'Sem Registro', icon: '⚪', status: 'semregistro' }
+  }
+
+  const dataProxima = new Date(`${ativo.dt_proxima_preventiva}T12:00:00`).getTime()
+  const hoje = new Date().getTime()
+  const diffDias = Math.ceil((dataProxima - hoje) / (1000 * 60 * 60 * 24))
+
+  if (diffDias < 0) {
+    return { bg_icon: 'bg-red-50 border-red-200 text-red-600', text: 'text-red-600', label: `Atrasada (${Math.abs(diffDias)} dias)`, icon: '🔴', status: 'atrasada' }
+  } else if (diffDias <= 15) {
+    return { bg_icon: 'bg-orange-50 border-orange-200 text-orange-500', text: 'text-orange-500', label: `Vence em ${diffDias} dias`, icon: '🟡', status: 'avencer' }
+  } else {
+    return { bg_icon: 'bg-emerald-50 border-emerald-200 text-emerald-600', text: 'text-emerald-500', label: 'Preventiva em dia', icon: '🟢', status: 'emdia' }
+  }
+}
+
+const gerarNomePredio = (ativo: any) => {
+  const locId = ativo.localizacao || ativo.id_localizacao || ativo.localizacao_id;
+  if (!locId) return 'Sem Localização';
+  const loc = listaLocalizacoes.value.find(l => l.id_localizacao === locId || l.id === locId);
+  if (!loc) return 'Sala Não Encontrada';
+  const predioId = loc.predio || loc.id_predio;
+  const predio = listaPredios.value.find(p => p.id_predio === predioId || p.id === predioId);
+  return predio ? (predio.nome_predio || predio.nome) : 'Prédio Desconhecido';
+}
+
+const gerarNomeSala = (ativo: any) => {
+  const locId = ativo.localizacao || ativo.id_localizacao || ativo.localizacao_id;
+  if (!locId) return 'N/I';
+  const loc = listaLocalizacoes.value.find(l => l.id_localizacao === locId || l.id === locId);
+  return loc ? (loc.desc_localizacao || loc.nome) : 'Sala Desconhecida';
 }
 
 const gerarNomeLocalizacao = (ativo: any) => {
-  const locId = ativo.localizacao || ativo.id_localizacao || ativo.localizacao_id;
-  if (!locId) return 'Sem Localização Registada';
-
-  const loc = listaLocalizacoes.value.find(l => l.id_localizacao === locId || l.id === locId);
-  if (!loc) return 'Sala Não Encontrada';
-
-  const predioId = loc.predio || loc.id_predio;
-  const predio = listaPredios.value.find(p => p.id_predio === predioId || p.id === predioId);
-
-  const nomePredio = predio ? (predio.nome_predio || predio.nome) : 'Prédio N/I';
-  const nomeLoc = loc.desc_localizacao || loc.nome || 'Sala N/I';
-
-  return `${nomePredio} - ${nomeLoc}`;
+  return `${gerarNomePredio(ativo)} - ${gerarNomeSala(ativo)}`
 }
 
 const ativosFiltrados = computed(() => {
-  if (!termoBusca.value) return ativos.value
-  const termo = termoBusca.value.toLowerCase()
-  return ativos.value.filter(a => {
-    const busca = `${a.codigo_patrimonial} ${a.marca} ${a.modelo} ${a.tipo_ativo}`.toLowerCase()
-    return busca.includes(termo)
+  let resultado = ativos.value
+
+  if (termoBusca.value) {
+    const termo = termoBusca.value.toLowerCase()
+    resultado = resultado.filter(a => {
+      const busca = `${a.codigo_patrimonial} ${a.marca} ${a.modelo} ${a.tipo_ativo}`.toLowerCase()
+      return busca.includes(termo)
+    })
+  }
+
+  if (filtroPredioBusca.value) {
+    resultado = resultado.filter(a => {
+      const locId = a.localizacao || a.id_localizacao || a.localizacao_id
+      const loc = listaLocalizacoes.value.find(l => l.id_localizacao === locId || l.id === locId)
+      if (!loc) return false
+      return String(loc.predio || loc.id_predio) === String(filtroPredioBusca.value)
+    })
+  }
+
+  if (filtroStatusPreventiva.value) {
+    resultado = resultado.filter(a => obterCorStatus(a).status === filtroStatusPreventiva.value)
+  }
+
+  return resultado
+})
+
+const ativosAgrupados = computed(() => {
+  const agrupado: Record<string, any[]> = {}
+  
+  ativosFiltrados.value.forEach(ativo => {
+    const nomePredio = gerarNomePredio(ativo)
+    if (!agrupado[nomePredio]) {
+      agrupado[nomePredio] = []
+    }
+    agrupado[nomePredio].push(ativo)
   })
+
+  return Object.keys(agrupado).sort().reduce((obj: Record<string, any[]>, key) => {
+    obj[key] = agrupado[key]
+    return obj
+  }, {})
 })
 
 const localizacoesFiltradas = computed(() => {
@@ -262,16 +465,7 @@ function aoTrocarPredio() {
 }
 
 function resetarForm() {
-  form.value = {
-    id_ativo: null,
-    codigo_patrimonial: '',
-    tipo_ativo: 'AR_CONDICIONADO',
-    marca: '',
-    modelo: '',
-    numero_serial: '',
-    periodicidade_preventiva_dias: 30,
-    id_localizacao: ''
-  }
+  form.value = { id_ativo: null, codigo_patrimonial: '', tipo_ativo: 'AR_CONDICIONADO', marca: '', modelo: '', numero_serial: '', periodicidade_preventiva_dias: 30, dt_ultima_preventiva: '', id_localizacao: '' }
   idPredioSelecionado.value = null
 }
 
@@ -283,32 +477,41 @@ function abrirModalNovo() {
 
 function abrirModalEdicao(ativo: any) {
   modoEdicao.value = true
-
   const idAtivoReal = ativo.id_ativo || ativo.id;
   const locIdReal = ativo.localizacao || ativo.id_localizacao || ativo.localizacao_id;
 
   form.value = { 
-    id_ativo: idAtivoReal, 
-    codigo_patrimonial: ativo.codigo_patrimonial || '',
-    tipo_ativo: ativo.tipo_ativo || 'AR_CONDICIONADO',
-    marca: ativo.marca || '',
-    modelo: ativo.modelo || '',
-    numero_serial: ativo.numero_serial || '',
-    periodicidade_preventiva_dias: ativo.periodicidade_preventiva_dias || 30,
-    id_localizacao: locIdReal || ''
+    id_ativo: idAtivoReal, codigo_patrimonial: ativo.codigo_patrimonial || '', tipo_ativo: ativo.tipo_ativo || 'AR_CONDICIONADO',
+    marca: ativo.marca || '', modelo: ativo.modelo || '', numero_serial: ativo.numero_serial || '',
+    periodicidade_preventiva_dias: ativo.periodicidade_preventiva_dias || 30, dt_ultima_preventiva: ativo.dt_ultima_preventiva || '', id_localizacao: locIdReal || ''
   }
-
+  
   const locEncontrada = listaLocalizacoes.value.find(l => l.id_localizacao === locIdReal || l.id === locIdReal)
-  if (locEncontrada) {
-    idPredioSelecionado.value = locEncontrada.predio || locEncontrada.id_predio
-  }
+  if (locEncontrada) idPredioSelecionado.value = locEncontrada.predio || locEncontrada.id_predio
   
   modalAberto.value = true
 }
 
-function fecharModal() {
-  modalAberto.value = false
+function fecharModal() { modalAberto.value = false }
+
+async function abrirModalDetalhes(ativo: any) {
+  ativoSelecionado.value = ativo
+  modalDetalhesAberto.value = true
+  loadingHistorico.value = true
+  historicoAtivo.value = []
+  
+  try {
+    const id = ativo.id_ativo || ativo.id
+    const response = await api.get(`/ativo/${id}/historico/`, authHeader())
+    historicoAtivo.value = response.data.dados || response.data || []
+  } catch (error) {
+    console.error("Endpoint de histórico erro:", error)
+  } finally {
+    loadingHistorico.value = false
+  }
 }
+
+function fecharModalDetalhes() { modalDetalhesAberto.value = false; ativoSelecionado.value = null }
 
 async function salvarAtivo() {
   if (!form.value.codigo_patrimonial || !form.value.marca || !form.value.modelo || !form.value.id_localizacao) {
@@ -318,68 +521,45 @@ async function salvarAtivo() {
   salvando.value = true
   try {
     const payload = {
-      codigo_patrimonial: form.value.codigo_patrimonial,
-      tipo_ativo: form.value.tipo_ativo,
-      marca: form.value.marca,
-      modelo: form.value.modelo,
-      numero_serial: form.value.numero_serial,
-      periodicidade_preventiva_dias: form.value.periodicidade_preventiva_dias,
-      id_localizacao: form.value.id_localizacao,
-      localizacao: form.value.id_localizacao 
+      codigo_patrimonial: form.value.codigo_patrimonial, tipo_ativo: form.value.tipo_ativo, marca: form.value.marca, modelo: form.value.modelo,
+      numero_serial: form.value.numero_serial, periodicidade_preventiva_dias: form.value.periodicidade_preventiva_dias,
+      dt_ultima_preventiva: form.value.dt_ultima_preventiva || null, id_localizacao: form.value.id_localizacao, localizacao: form.value.id_localizacao 
     }
 
     if (modoEdicao.value) {
-      if (!form.value.id_ativo) throw new Error("ID do Ativo não foi encontrado no Frontend.");
+      if (!form.value.id_ativo) throw new Error("ID do Ativo não foi encontrado.");
       await api.put(`/ativo/${form.value.id_ativo}/`, payload, authHeader())
-      Swal.fire({ title: 'Atualizado!', text: 'Ativo atualizado com sucesso.', icon: 'success', timer: 2000, showConfirmButton: false })
+      Swal.fire({ title: 'Atualizado!', text: 'Ativo atualizado.', icon: 'success', timer: 2000, showConfirmButton: false })
     } else {
       await api.post('/ativo/', payload, authHeader())
-      Swal.fire({ title: 'Criado!', text: 'Novo ativo registado com sucesso.', icon: 'success', timer: 2000, showConfirmButton: false })
+      Swal.fire({ title: 'Criado!', text: 'Novo ativo registado.', icon: 'success', timer: 2000, showConfirmButton: false })
     }
 
     fecharModal()
     await carregarDados()
   } catch (error: any) {
     let msgDetalhada = 'Verifique os dados informados.';
-
-    if (error.response && error.response.data) {
+    if (error.response?.data) {
       const resposta = error.response.data;
-
       if (resposta.erros && typeof resposta.erros === 'object') {
-        msgDetalhada = Object.entries(resposta.erros)
-          .map(([campo, msgs]) => {
-            const textoErro = Array.isArray(msgs) ? msgs.join(', ') : String(msgs);
-            return `- ${textoErro}`; 
-          })
-          .join('\n');
-      } 
-      else if (resposta.mensagem) {
-        msgDetalhada = resposta.mensagem;
-      }
+        msgDetalhada = Object.entries(resposta.erros).map(([campo, msgs]) => `- ${Array.isArray(msgs) ? msgs.join(', ') : String(msgs)}`).join('\n');
+      } else if (resposta.mensagem) { msgDetalhada = resposta.mensagem; }
     }
-    
-    Swal.fire({ 
-      title: 'Não foi possível salvar', 
-      text: msgDetalhada, 
-      icon: 'error',
-      customClass: { popup: 'rounded-2xl' }
-    })
+    Swal.fire({ title: 'Erro ao salvar', text: msgDetalhada, icon: 'error', customClass: { popup: 'rounded-2xl' } })
   } finally {
     salvando.value = false
   }
 }
 
 async function excluirAtivo(id: number) {
-  const result = await Swal.fire({ title: 'Remover Ativo?', text: 'Tem a certeza que deseja remover este equipamento?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#ef4444', confirmButtonText: 'Sim, Remover', cancelButtonText: 'Cancelar' })
+  const result = await Swal.fire({ title: 'Remover Ativo?', text: 'Deseja remover este equipamento?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#ef4444', confirmButtonText: 'Remover', cancelButtonText: 'Cancelar' })
   if (!result.isConfirmed) return
 
   try {
     await api.delete(`/ativo/${id}/`, authHeader())
-    Swal.fire({ title: 'Removido!', text: 'Ativo excluído com sucesso.', icon: 'success', timer: 2000, showConfirmButton: false })
+    Swal.fire({ title: 'Removido!', text: 'Ativo excluído.', icon: 'success', timer: 2000, showConfirmButton: false })
     carregarDados()
-  } catch (error) {
-    Swal.fire({ title: 'Erro', text: 'Não foi possível remover o ativo. Ele pode estar vinculado a uma OS.', icon: 'error' })
-  }
+  } catch (error) { Swal.fire({ title: 'Erro', text: 'Não foi possível remover.', icon: 'error' }) }
 }
 
 onMounted(() => carregarDados())

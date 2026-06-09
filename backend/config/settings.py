@@ -18,7 +18,6 @@ ALLOWED_HOSTS = [
     '.ngrok-free.app'
 ]
 
-# Application definition
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',

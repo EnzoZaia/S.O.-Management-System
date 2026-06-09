@@ -1,5 +1,7 @@
 {
   "dependencies": {
-    "sweetalert2": "^11.26.25"
+    "chart.js": "^4.5.1",
+    "sweetalert2": "^11.26.25",
+    "vue-chartjs": "^5.3.3"
   }
 }

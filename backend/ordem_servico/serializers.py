@@ -5,17 +5,26 @@ from ordem_servico.models import OrdemServico
 class OrdemServicoSerializer(serializers.ModelSerializer):
     status_ordem_servico = serializers.CharField(required=False)
 
-    # Adicionados: Campos virtuais para retornar os nomes de texto para o Vue
     predio_nome = serializers.CharField(source='localizacao.predio.nome_predio', read_only=True, default="Totem")
     localizacao_nome = serializers.CharField(source='localizacao.desc_localizacao', read_only=True, default="") 
     solicitante_nome = serializers.CharField(source='solicitante.nome', read_only=True, default="Totem (Anônimo)")
     tecnico_nome = serializers.CharField(source='tecnico.nome', read_only=True, default="Não atribuído")
     gestor_nome = serializers.CharField(source='gestor.nome', read_only=True, default=None) # <--- NOVA LINHA ADICIONADA AQUI
-
+    ativo_nome = serializers.SerializerMethodField() # <--- NOVA LINHA ADICIONADA AQUI
+    ativo_patrimonio = serializers.CharField(source='ativo.codigo_patrimonial', read_only=True, default="") # <--- NOVA LINHA ADICIONADA AQUI
+    ativo_ultima_preventiva = serializers.DateField(source='ativo.dt_ultima_preventiva', read_only=True, default=None) # <--- NOVA LINHA ADICIONADA AQUI 
+    ativo_proxima_preventiva = serializers.DateField(source='ativo.dt_proxima_preventiva', read_only=True, default=None) # <--- NOVA LINHA ADICIONADA AQUI
+    
     class Meta:
         model = OrdemServico
         fields = '__all__'
         read_only_fields = ['id_ordem_servico', 'solicitante', 'dt_abertura', 'dt_conclusao']
+        
+    # Função que constrói o nome do aparelho
+    def get_ativo_nome(self, obj):
+        if obj.ativo:
+            return f"{obj.ativo.marca} {obj.ativo.modelo}"
+        return ""    
 
     def validate_tipo_manutencao(self, value):
         valores_validos = ['CORRETIVA', 'PREVENTIVA']

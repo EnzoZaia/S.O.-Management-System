@@ -5,6 +5,9 @@ from ativo.models import Ativo
 from ativo.serializers import AtivoSerializer
 from utils.responses import resposta_sucesso, resposta_erro
 from utils.permissions import IsGerente, IsGestor,IsGerenteOuGestorOuTecnico
+from rest_framework.views import APIView
+from ordem_servico.models import OrdemServico
+from ordem_servico.serializers import OrdemServicoSerializer
 
 # Create your views here.
 # As views AtivoListCreateView e AtivoRetrieveUpdateDestroyView são responsáveis por lidar com as operações de listagem, criação, recuperação, atualização e exclusão de ativos. Elas utilizam os serializers para validar e transformar os dados, e as permissões para garantir que apenas usuários autorizados possam realizar certas ações. As respostas são formatadas usando funções de resposta personalizada para manter a consistência na comunicação com o cliente.
@@ -88,3 +91,24 @@ class AtivoRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
         ativo.delete()
 
         return resposta_sucesso("Ativo removido com sucesso.", None, status.HTTP_200_OK)
+    
+class AtivoHistoricoView(APIView):
+    """
+    Retorna todo o histórico de manutenções (Ordens de Serviço concluídas) 
+    vinculadas a um ativo específico.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        try:
+            # Busca todas as OS's concluídas ou encerradas para o ativo especificado
+            historico = OrdemServico.objects.filter(
+                ativo_id=pk, 
+                status_ordem_servico__in=['CONCLUIDA', 'ENCERRADA']
+            ).order_by('-dt_conclusao')
+            
+            serializer = OrdemServicoSerializer(historico, many=True)
+            return resposta_sucesso("Histórico carregado com sucesso.", serializer.data)
+            
+        except Exception as e:
+            return resposta_erro(f"Erro ao buscar histórico: {str(e)}", None)

@@ -1,6 +1,7 @@
 from rest_framework import generics, status
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, AllowAny
+import re
 from django.utils import timezone
 from datetime import timedelta
 from rest_framework.response import Response
@@ -77,22 +78,16 @@ class OrdemServicoRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIVie
     def get_permissions(self):
         if self.request.method in ['PATCH', 'PUT', 'DELETE']:
             return [IsAuthenticated(), IsGerenteOuGestorOuTecnico()]
-
         return [IsAuthenticated()]
 
     def get_queryset(self):
         usuario = self.request.user
-
         if usuario_tem_grupo(usuario, "GERENTE"):
             return OrdemServico.objects.all()
-
         if usuario_tem_grupo(usuario, "GESTOR"):
-            from django.db.models import Q
             return OrdemServico.objects.filter(Q(gestor=usuario) | Q(status_ordem_servico='ABERTA'))
-
         if usuario_tem_grupo(usuario, "TECNICO"):
             return OrdemServico.objects.filter(tecnico=usuario)
-
         return OrdemServico.objects.filter(solicitante=usuario)
 
     def retrieve(self, request, *args, **kwargs):
@@ -116,50 +111,50 @@ class OrdemServicoRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIVie
         if serializer.is_valid():
             ordem_servico = serializer.save()
 
-            if novo_status in ["CONCLUIDA", "ENCERRADA"] and not getattr(ordem_servico, 'dt_conclusao', None):
-                ordem_servico.dt_conclusao = timezone.now()
-                ordem_servico.save()       
-            
             if novo_status and novo_status != status_anterior:
-                registrar_historico(
-                    ordem_servico,
-                    usuario,
-                    f"Status alterado: {status_anterior} -> {novo_status}"
-                )
+                motivo_tecnico = request.data.get("observacao", dados.get("observacao", ""))
+                
+                # ====================================================
+                # A MÁGICA DO ATIVO: LENDO O PATRIMÔNIO DA OBSERVAÇÃO
+                # ====================================================
+                if novo_status == "CONCLUIDA":
+                    ordem_servico.dt_conclusao = timezone.now()
+                    
+                    # Procura por [PAT: XXXXXX] dentro do texto
+                    match = re.search(r'\[PAT:\s*([^\]]+)\]', motivo_tecnico)
+                    if match:
+                        patrimonio_informado = match.group(1).strip()
+                        # Busca o ativo no banco pelo Código Patrimonial
+                        ativo_vinculado = Ativo.objects.filter(codigo_patrimonial=patrimonio_informado).first()
+                        if ativo_vinculado:
+                            ordem_servico.ativo = ativo_vinculado # Vincula o ativo à OS Corretiva/Preventiva
+                            
+                    # Se houver um ativo na OS, atualiza a vida útil dele
+                    if ordem_servico.ativo:
+                        ativo = ordem_servico.ativo
+                        ativo.dt_ultima_preventiva = timezone.now().date()
+                        
+                        if ativo.periodicidade_preventiva_dias:
+                            ativo.dt_proxima_preventiva = calcular_proxima_preventiva(
+                                ativo.dt_ultima_preventiva,
+                                ativo.periodicidade_preventiva_dias,
+                                ativo.localizacao,
+                                ativo
+                            )
+                        ativo.save()
+                        criar_ou_atualizar_os_preventiva_para_ativo(ativo)
+                # ====================================================
 
-            if (
-                ordem_servico.tipo_manutencao == "PREVENTIVA"
-                and novo_status in ["CONCLUIDA", "ENCERRADA"]
-                and ordem_servico.ativo
-            ):
-                ordem_servico.dt_conclusao = timezone.now()
+                texto_historico = f"Status alterado: {status_anterior} -> {novo_status}."
+                if motivo_tecnico and str(motivo_tecnico).strip():
+                    texto_historico += f" Detalhes: {str(motivo_tecnico).strip()}"
+                
+                registrar_historico(ordem_servico, usuario, texto_historico)
+
+            # Auto-encerrar Preventivas que foram concluídas
+            if ordem_servico.tipo_manutencao == "PREVENTIVA" and novo_status == "CONCLUIDA":
                 ordem_servico.status_ordem_servico = "ENCERRADA"
                 ordem_servico.save()
-
-                ativo = ordem_servico.ativo
-                ativo.dt_ultima_preventiva = timezone.now().date()
-
-                if ativo.periodicidade_preventiva_dias:
-                    ativo.dt_proxima_preventiva = calcular_proxima_preventiva(
-                        ativo.dt_ultima_preventiva,
-                        ativo.periodicidade_preventiva_dias,
-                        ativo.localizacao,
-                        ativo
-                    )
-
-                ativo.save()
-                criar_ou_atualizar_os_preventiva_para_ativo(ativo)
-
-                registrar_historico(
-                    ordem_servico,
-                    usuario,
-                    f"Manutenção preventiva encerrada por {usuario.nome}. Próxima preventiva recalculada para {ativo.dt_proxima_preventiva}."
-                )
-
-                return resposta_sucesso(
-                    "Manutenção preventiva encerrada com sucesso. Próxima preventiva gerada automaticamente.",
-                    OrdemServicoSerializer(ordem_servico).data
-                )
 
             return resposta_sucesso("Ordem de serviço atualizada com sucesso.", serializer.data)
 
@@ -230,14 +225,28 @@ class DashboardIndicadoresView(APIView):
 
     def get(self, request, *args, **kwargs):
         usuario = request.user
+        periodo = request.query_params.get('periodo', '30d')
+        agora = timezone.now()
         
-        # 1. Filtro dinâmico: Gerente vê tudo, Gestor vê as dele + novas abertas
+        # 1. Filtro base de Usuário
         if usuario_tem_grupo(usuario, "GERENTE"):
             base_query = OrdemServico.objects.all()
-        else: # Considera como Gestor
+        else: # Gestor
             base_query = OrdemServico.objects.filter(Q(gestor=usuario) | Q(status_ordem_servico='ABERTA') | Q(status_ordem_servico='REPROVADA'))
 
-        # 2. Contagem Geral e Agrupamento por Status usando a base filtrada
+        # 2. Filtro de Período (A Mágica Temporal)
+        if periodo == 'mes_atual':
+            base_query = base_query.filter(dt_abertura__year=agora.year, dt_abertura__month=agora.month)
+        elif periodo == 'mes_passado':
+            mes_passado = agora.month - 1 if agora.month > 1 else 12
+            ano_passado = agora.year if agora.month > 1 else agora.year - 1
+            base_query = base_query.filter(dt_abertura__year=ano_passado, dt_abertura__month=mes_passado)
+        elif periodo == 'ano':
+            base_query = base_query.filter(dt_abertura__year=agora.year)
+        else: # '30d' default
+            limite_data = agora - timedelta(days=30)
+            base_query = base_query.filter(dt_abertura__gte=limite_data)
+
         total_ordens = base_query.count()
         status_counts = base_query.values('status_ordem_servico').annotate(total=Count('id_ordem_servico'))
         
@@ -246,82 +255,63 @@ class DashboardIndicadoresView(APIView):
             'AGUARDANDO_MATERIAL': 0, 'AGUARDANDO_TERCEIRO': 0,
             'CONCLUIDA': 0, 'CANCELADA': 0, 'REPROVADA': 0, 'ENCERRADA': 0,
         }
-        
         for item in status_counts:
-            st_nome = item['status_ordem_servico']
-            if st_nome in contagens:
-                contagens[st_nome] = item['total']
+            if item['status_ordem_servico'] in contagens:
+                contagens[item['status_ordem_servico']] = item['total']
 
-        # 3. Tempo Médio de Atendimento
-        ordens_finalizadas = base_query.filter(
-            dt_conclusao__isnull=False, 
-            status_ordem_servico__in=['CONCLUIDA', 'ENCERRADA']
-        )
+        # Preventivas vs Corretivas
+        tipo_counts = base_query.values('tipo_manutencao').annotate(total=Count('id_ordem_servico'))
+        tipos_dict = {'preventiva': 0, 'corretiva': 0}
+        for t in tipo_counts:
+            if t['tipo_manutencao'] == 'PREVENTIVA':
+                tipos_dict['preventiva'] += t['total']
+            else:
+                tipos_dict['corretiva'] += t['total']
+
+        # Tempo Médio de Atendimento
+        ordens_finalizadas = base_query.filter(dt_conclusao__isnull=False, status_ordem_servico__in=['CONCLUIDA', 'ENCERRADA'])
         tempo_medio = "0d"
         if ordens_finalizadas.exists():
             try:
-                dados_tempo = ordens_finalizadas.annotate(
-                    duracao=F('dt_conclusao') - F('dt_abertura')
-                ).aggregate(media_duracao=Avg('duracao'))
-                
-                duracao_media = dados_tempo['media_duracao']
-                if duracao_media:
-                    dias = duracao_media.days + (duracao_media.seconds / 86400)
+                dados_tempo = ordens_finalizadas.annotate(duracao=F('dt_conclusao') - F('dt_abertura')).aggregate(media_duracao=Avg('duracao'))
+                if dados_tempo['media_duracao']:
+                    duracao = dados_tempo['media_duracao']
+                    dias = duracao.days + (duracao.seconds / 86400)
                     tempo_medio = f"{dias:.1f}d"
-            except Exception as e:
-                print(f"Erro ao calcular tempo médio: {e}")
+            except: pass
 
-        # 4. Ranking de Técnicos (Corrigido para ordenar por MAIOR NÚMERO DE CONCLUÍDAS)
+        # Ranking de Técnicos
         tecnicos_data = []
         try:
             ranking_tecnicos = Usuario.objects.annotate(
-                total_os=Count('ordens_atribuidas'),
-                concluidas_os=Count('ordens_atribuidas', filter=Q(ordens_atribuidas__status_ordem_servico__in=['CONCLUIDA', 'ENCERRADA']))
-            ).filter(total_os__gt=0).order_by('-concluidas_os', '-total_os')[:4] # <--- A MÁGICA ESTÁ AQUI
-            
+                total_os=Count('ordens_atribuidas', filter=Q(ordens_atribuidas__in=base_query)),
+                concluidas_os=Count('ordens_atribuidas', filter=Q(ordens_atribuidas__status_ordem_servico__in=['CONCLUIDA', 'ENCERRADA'], ordens_atribuidas__in=base_query))
+            ).filter(total_os__gt=0).order_by('-concluidas_os', '-total_os')[:4]
             tecnicos_data = [{'nome': t.nome, 'concluidas': t.concluidas_os, 'total': t.total_os} for t in ranking_tecnicos]
-        except Exception as e:
-            try:
-                # Fallback caso o related_name seja o padrão do Django (ordemservico)
-                ranking_fallback = Usuario.objects.annotate(
-                    total_os=Count('ordemservico'),
-                    concluidas_os=Count('ordemservico', filter=Q(ordemservico__status_ordem_servico__in=['CONCLUIDA', 'ENCERRADA']))
-                ).filter(total_os__gt=0).order_by('-concluidas_os', '-total_os')[:4] # <--- E AQUI TAMBÉM
-                tecnicos_data = [{'nome': t.nome, 'concluidas': t.concluidas_os, 'total': t.total_os} for t in ranking_fallback]
-            except:
-                pass
+        except: pass
 
-        # 5. Histórico Semanal das Últimas 6 Semanas (Usando a base filtrada)
+        # Histórico Semanal
         semanas_data = []
-        agora = timezone.now()
         for i in range(5, -1, -1):
             fim_semana = agora - timedelta(weeks=i)
             inicio_semana = fim_semana - timedelta(days=7)
-            
-            qtd_semana = base_query.filter(
-                status_ordem_servico__in=['CONCLUIDA', 'ENCERRADA'],
-                dt_conclusao__range=(inicio_semana, fim_semana)
-            ).count()
-            
-            semanas_data.append({
-                'label': f'Sem {6 - i}',
-                'valor': qtd_semana
-            })
+            qtd_semana = base_query.filter(status_ordem_servico__in=['CONCLUIDA', 'ENCERRADA'], dt_conclusao__range=(inicio_semana, fim_semana)).count()
+            semanas_data.append({'label': f'Sem {6 - i}', 'valor': qtd_semana})
 
-        # 6. Montagem Estruturada do Payload final
         dados_dashboard = {
             'totalOrdens': total_ordens,
             'abertas': contagens['ABERTA'],
             'emExecucao': contagens['EM_EXECUCAO'],
             'concluidas': contagens['CONCLUIDA'] + contagens['ENCERRADA'],
-            'tempo_medio': tempo_medio, # <--- ADICIONADO AQUI
+            'tempo_medio': tempo_medio,
             'statusDetalhados': contagens,
+            'tipo_manutencao': tipos_dict, # <-- AQUI MANDA OS DADOS PRO BALANÇO OPERACIONAL
             'rankingTecnicos': tecnicos_data,
             'pendencias': {
                 'aguardando_aprovacao': contagens['ABERTA'],
                 'aguardando_material': contagens['AGUARDANDO_MATERIAL'],
                 'aguardando_terceiro': contagens['AGUARDANDO_TERCEIRO'],
-                'sem_tecnico': base_query.filter(tecnico__isnull=True).count()
+                'sem_tecnico': base_query.filter(tecnico__isnull=True, status_ordem_servico='APROVADA').count()
             },
             'semanas': semanas_data
         }

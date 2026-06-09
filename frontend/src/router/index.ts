@@ -10,11 +10,6 @@ const router = createRouter({
       component: LoginView,
     },
     {
-      path: '/dashboard',
-      name: 'dashboard',
-      component: () => import('@/views/DashboardView.vue'),
-    },
-    {
       path: '/abrir-os',
       name: 'abrir-os',
       component: () => import('@/views/AbrirOsView.vue'),
@@ -22,6 +17,7 @@ const router = createRouter({
     {
       path: '/dashboard-gerente',
       component: () => import('@/views/DashboardGerenteView.vue'),
+      redirect: '/dashboard-gerente/indicadores',
       children: [
         {
           path: 'indicadores',
@@ -37,13 +33,17 @@ const router = createRouter({
         },
         {
           path: 'ativos',
-          component: () => import('@/views/AtivosView.vue'), // <-- ADICIONADO
+          component: () => import('@/views/AtivosView.vue'),
+        },
+        { path: 'historico', 
+          component: () => import('@/views/HistoricoView.vue') 
         },
       ],
     },
     {
       path: '/dashboard-gestor',
       component: () => import('@/views/DashboardGestorView.vue'),
+      redirect: '/dashboard-gestor/indicadores',
       children: [
         {
           path: 'ordens',
@@ -55,13 +55,17 @@ const router = createRouter({
         },
         {
           path: 'ativos',
-          component: () => import('@/views/AtivosView.vue'), 
+          component: () => import('@/views/AtivosView.vue'),
+        },
+        { path: 'historico', 
+          component: () => import('@/views/HistoricoView.vue') 
         },
       ],
     },
     {
       path: '/dashboard-tecnico',
       component: () => import('@/views/DashboardTecnicoView.vue'),
+      redirect: '/dashboard-tecnico/ordens',
       children: [
         {
           path: 'ordens',
@@ -69,14 +73,17 @@ const router = createRouter({
         },
         {
           path: 'ativos',
-          component: () => import('@/views/AtivosView.vue'), 
+          component: () => import('@/views/AtivosView.vue'),
+        },
+        { path: 'historico', 
+          component: () => import('@/views/HistoricoView.vue') 
         },
       ],
     },
     {
       path: '/perfil',
       name: 'perfil',
-      component: () => import('@/views/PerfilView.vue'), 
+      component: () => import('@/views/PerfilView.vue'),
     },
   ],
 })

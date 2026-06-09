@@ -36,6 +36,15 @@
         <span class="text-xl w-8 text-center shrink-0">🖥️</span>
         <span class="text-sm whitespace-nowrap transition-all duration-300" :class="isExpanded ? 'opacity-100' : 'opacity-0 w-0'">Ativos</span>
       </button>
+
+      <button @click="router.push('/dashboard-tecnico/historico')"
+        :class="[
+          'flex items-center gap-4 px-3 py-3 rounded-xl cursor-pointer transition-all duration-200 group',
+          route.path.includes('historico') ? 'bg-blue-600/50 text-white font-semibold shadow-inner' : 'text-blue-200 hover:bg-blue-800/50 hover:text-white'
+        ]">
+        <span class="text-xl w-8 text-center shrink-0">⏱️</span>
+        <span class="text-sm whitespace-nowrap transition-all duration-300" :class="isExpanded ? 'opacity-100' : 'opacity-0 w-0'">Histórico</span>
+      </button>
     </nav>
     <div class="p-4 border-t border-blue-800/60 relative">
       <div v-if="menuAberto && isExpanded" class="absolute bottom-[calc(100%-10px)] left-4 right-4 bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden z-50 py-1 origin-bottom transition-all">
