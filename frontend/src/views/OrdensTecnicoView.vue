@@ -265,8 +265,9 @@
                 <select v-model="formConclusao.patrimonio" class="w-full bg-emerald-50/30 border border-emerald-200 text-gray-800 text-sm font-bold rounded-lg px-3 py-2.5 outline-none focus:ring-2 focus:ring-emerald-500 transition-all cursor-pointer">
                   <option value="" disabled>Selecione o equipamento...</option>
                   <option v-if="ativosDoPredio.length === 0" value="" disabled>Nenhum ar registrado neste prédio</option>
+                  
                   <option v-for="ativo in ativosDoPredio" :key="ativo.id_ativo" :value="ativo.codigo_patrimonial">
-                    {{ ativo.marca }} {{ ativo.modelo }} (PAT: {{ ativo.codigo_patrimonial || 'S/N' }})
+                    {{ ativo.nomeLimpo }}
                   </option>
                 </select>
               </div>
@@ -322,18 +323,43 @@ const prediosUnicos = computed(() => {
 })
 
 const ativosDoPredio = computed(() => {
-  if (!osSelecionada.value || !osSelecionada.value.predio_nome) return []
-  const predioOS = String(osSelecionada.value.predio_nome).toLowerCase().trim()
+  if (!osSelecionada.value) return []
+  
+  const predioIdDaOS = osSelecionada.value.predio_id || osSelecionada.value.predio
+  const nomePredioOS = String(osSelecionada.value.predio_nome || '').toLowerCase().trim()
+
   return ativos.value.filter(ativo => {
-    const locId = ativo.localizacao || ativo.id_localizacao || ativo.localizacao_id
-    if (!locId) return false
-    const loc = listaLocalizacoes.value.find(l => l.id_localizacao === locId || l.id === locId)
-    if (!loc) return false
-    const predio = listaPredios.value.find(p => p.id_predio === loc.predio || p.id_predio === loc.id_predio || p.id === loc.predio || p.id === loc.id_predio)
-    if (!predio) return false
-    const nomePredioAtivo = String(predio.nome_predio || predio.nome).toLowerCase().trim()
-    return nomePredioAtivo.includes(predioOS) || predioOS.includes(nomePredioAtivo)
-  })
+    const locIdAtivo = ativo.localizacao || ativo.id_localizacao || ativo.localizacao_id
+    if (!locIdAtivo) return false
+
+    const locAtivo = listaLocalizacoes.value.find(l => String(l.id_localizacao || l.id) === String(locIdAtivo))
+    if (locAtivo) {
+       const pIdAtivo = locAtivo.predio || locAtivo.id_predio
+       if (String(pIdAtivo) === String(predioIdDaOS)) return true
+       
+       const predioObj = listaPredios.value.find(p => String(p.id_predio || p.id) === String(pIdAtivo))
+       if (predioObj) {
+          const nomeP = String(predioObj.nome_predio || predioObj.nome).toLowerCase().trim()
+          if (nomeP && (nomeP.includes(nomePredioOS) || nomePredioOS.includes(nomeP))) return true
+       }
+    }
+    return false
+  }).map(ativo => {
+    let nomeLocal = 'Local N/I';
+    const locId = ativo.localizacao || ativo.id_localizacao || ativo.localizacao_id;
+    const loc = listaLocalizacoes.value.find(l => String(l.id_localizacao || l.id) === String(locId));
+    if (loc) nomeLocal = loc.desc_localizacao || loc.nome || 'Local N/I';
+
+    const marca = ativo.marca?.replace(/\*/g, '').trim() || ''
+    const modelo = ativo.modelo?.replace(/\*/g, '').trim() || ''
+    const pat = ativo.codigo_patrimonial?.replace(/\*/g, '').trim() || 'S/N'
+    const exibicao = `${marca} ${modelo}`.trim() || 'Ar Condicionado'
+
+    return {
+      ...ativo,
+      nomeLimpo: `${nomeLocal} | ${exibicao} (PAT: ${pat})`
+    }
+  }).sort((a, b) => a.nomeLimpo.localeCompare(b.nomeLimpo))
 })
 
 const extrairSolicitante = (os: any) => {
@@ -471,7 +497,7 @@ async function pausarOS() {
       placeholderDetalhe = 'Especifique o material (ex: Peça X, Gás, Fiação)...'
     } else if (statusEscolhido === 'AGUARDANDO_TERCEIRO') {
       tituloDetalhe = 'Qual terceiro/empresa?'
-      placeholderDetalhe = 'Aguarda qual empresa (ex: Empresa Y)...'
+      placeholderDetalhe = 'Aguardando qual empresa/terceiro? (ex: Empresa Y)...'
     }
 
     const { value: justificativa } = await Swal.fire({ 
