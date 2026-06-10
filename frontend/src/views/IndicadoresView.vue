@@ -60,11 +60,11 @@
       <div class="flex justify-between items-end mb-3 px-1">
          <div class="flex flex-col">
            <span class="text-4xl font-black text-purple-600 leading-none">{{ dadosBrutos.tipo_manutencao.preventiva }}</span>
-           <span class="text-[10px] font-bold text-purple-400 uppercase tracking-wider mt-1"> Preventivas</span>
+           <span class="text-[10px] font-bold text-purple-400 uppercase tracking-wider mt-1"> Preventivas (Concluídas)</span>
          </div>
          <div class="flex flex-col items-end">
            <span class="text-4xl font-black text-gray-600 leading-none">{{ dadosBrutos.tipo_manutencao.corretiva }}</span>
-           <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1"> Corretivas</span>
+           <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1"> Corretivas (Concluídas)</span>
          </div>
       </div>
 
@@ -256,6 +256,48 @@ async function buscarDadosDashboard() {
     const response = await api.get(`/ordem-servico/dashboard/indicadores/?periodo=${filtroPeriodo.value}`, { headers: { Authorization: `Bearer ${token}` } })
     const dadosApi = response.data?.dados || response.data || {}
     
+    let prevConc = 0;
+    let corrConc = 0;
+    try {
+       const resOs = await api.get(`/ordem-servico/`, { headers: { Authorization: `Bearer ${token}` } });
+       const listaOS = resOs.data?.dados || resOs.data || [];
+       const dataAtual = new Date();
+       
+       listaOS.forEach((os: any) => {
+          const taConcluida = os.status_ordem_servico === 'CONCLUIDA' || os.status_ordem_servico === 'ENCERRADA';
+          if (!taConcluida) return;
+
+          const dataOs = new Date(os.dt_abertura || os.data_registro || dataAtual);
+          let dentroDoPeriodo = false;
+
+          if (filtroPeriodo.value === '30d') {
+             const limite = new Date();
+             limite.setDate(limite.getDate() - 30);
+             dentroDoPeriodo = dataOs >= limite;
+          } else if (filtroPeriodo.value === 'mes_atual') {
+             dentroDoPeriodo = dataOs.getMonth() === dataAtual.getMonth() && dataOs.getFullYear() === dataAtual.getFullYear();
+          } else if (filtroPeriodo.value === 'mes_passado') {
+             let mesPassado = dataAtual.getMonth() - 1;
+             let ano = dataAtual.getFullYear();
+             if (mesPassado < 0) { mesPassado = 11; ano--; }
+             dentroDoPeriodo = dataOs.getMonth() === mesPassado && dataOs.getFullYear() === ano;
+          } else if (filtroPeriodo.value === 'ano') {
+             dentroDoPeriodo = dataOs.getFullYear() === dataAtual.getFullYear();
+          } else {
+             dentroDoPeriodo = true;
+          }
+
+          if (dentroDoPeriodo) {
+             if (os.tipo_manutencao === 'PREVENTIVA') { prevConc++; }
+             else { corrConc++; }
+          }
+       });
+    } catch (e) {
+       console.error("Erro na recontagem", e);
+       prevConc = dadosApi.tipo_manutencao?.preventiva || 0;
+       corrConc = dadosApi.tipo_manutencao?.corretiva || 0;
+    }
+
     dadosBrutos.value = {
       totalOrdens: dadosApi.totalOrdens || 0, abertas: dadosApi.abertas || 0, emExecucao: dadosApi.emExecucao || 0, concluidas: dadosApi.concluidas || 0, tempo_medio: dadosApi.tempo_medio || '0d',
       statusDetalhados: {
@@ -263,12 +305,12 @@ async function buscarDadosDashboard() {
         AGUARDANDO_MATERIAL: dadosApi.statusDetalhados?.AGUARDANDO_MATERIAL || 0, AGUARDANDO_TERCEIRO: dadosApi.statusDetalhados?.AGUARDANDO_TERCEIRO || 0,
         CONCLUIDA: dadosApi.statusDetalhados?.CONCLUIDA || 0, REPROVADA: dadosApi.statusDetalhados?.REPROVADA || 0, CANCELADA: dadosApi.statusDetalhados?.CANCELADA || 0, ENCERRADA: dadosApi.statusDetalhados?.ENCERRADA || 0,
       },
-      tipo_manutencao: dadosApi.tipo_manutencao || { preventiva: 0, corretiva: 0 },
+      tipo_manutencao: { preventiva: prevConc, corretiva: corrConc },
       rankingTecnicos: dadosApi.rankingTecnicos || [],
       pendencias: dadosApi.pendencias || { aguardando_aprovacao: 0, aguardando_material: 0, aguardando_terceiro: 0, sem_tecnico: 0 },
       semanas: dadosApi.semanas || []
     }
-  } catch (e) { console.error('Erro ao buscar dados do dashboard Geral:', e) }
+  } catch (e) { console.error('Erro ao buscar dados do dashboard:', e) }
 }
 
 onMounted(() => buscarDadosDashboard())
