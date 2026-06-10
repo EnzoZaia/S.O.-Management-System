@@ -179,7 +179,7 @@
               </span>
             </div>
             <span :class="osSelecionada?.prioridade_urgencia === 'SIM' ? 'text-red-700 bg-red-50 border border-red-200' : 'text-gray-700 bg-gray-50 border border-gray-200'" class="px-4 py-1.5 rounded-full text-sm font-bold">
-              {{ osSelecionada?.prioridade_urgencia === 'SIM' ? '🚨 Urgente' : 'Prioridade: Normal' }}
+              {{ osSelecionada?.prioridade_urgencia === 'SIM' ? ' Urgente' : 'Prioridade: Normal' }}
             </span>
           </div>
 

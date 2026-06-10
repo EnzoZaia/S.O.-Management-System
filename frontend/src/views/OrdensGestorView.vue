@@ -148,7 +148,7 @@
                 class="pl-4 pr-8 py-1.5 rounded-full text-sm font-bold outline-none cursor-pointer appearance-none border transition-colors bg-gray-50 border-gray-200 hover:bg-gray-100 text-gray-700"
                 :class="osSelecionada?.prioridade_urgencia === 'SIM' ? 'text-red-700 bg-red-50 border-red-200 hover:bg-red-100' : ''">
                 <option value="NAO">Prioridade: Normal</option>
-                <option value="SIM">🚨 Urgente</option>
+                <option value="SIM"> Urgente</option>
               </select>
               <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3" :class="osSelecionada?.prioridade_urgencia === 'SIM' ? 'text-red-500' : 'text-gray-500'">
                 <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"> <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" /> </svg>
