@@ -39,7 +39,6 @@
     </div>
 
     <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden pb-4">
-      
       <div v-if="loading" class="p-8 text-center text-gray-400 font-medium">A carregar ativos...</div>
       <div v-else-if="Object.keys(ativosAgrupados).length === 0" class="p-8 text-center text-gray-400 font-medium">Nenhum ativo encontrado com os filtros atuais.</div>
 
@@ -122,7 +121,6 @@
         </div>
         
         <div class="p-6 space-y-5 overflow-y-auto max-h-[70vh]">
-          
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div class="space-y-1.5">
               <label class="text-xs font-bold text-gray-500 uppercase tracking-wider">Tipo de Ativo *</label>
@@ -163,7 +161,6 @@
             <div class="space-y-1.5">
               <label class="text-xs font-bold text-gray-500 uppercase tracking-wider">Última Preventiva Realizada</label>
               <input v-model="form.dt_ultima_preventiva" type="date" class="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all" />
-              <p class="text-[10px] text-gray-400">O sistema calculará a próxima automaticamente.</p>
             </div>
           </div>
 
@@ -186,7 +183,6 @@
               </select>
             </div>
           </div>
-
         </div>
         
         <div class="p-6 border-t border-gray-100 flex justify-end gap-3 bg-gray-50">
@@ -264,20 +260,20 @@
                     <div class="flex justify-between items-start mb-2">
                       <div class="flex items-center gap-2">
                         <span :class="evento.tipo_manutencao === 'PREVENTIVA' ? 'bg-purple-100 text-purple-700' : 'bg-orange-100 text-orange-700'" class="text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider">
-                          {{ evento.tipo_manutencao }}
+                          {{ evento.tipo_manutencao || 'MANUTENÇÃO' }}
                         </span>
-                        <span class="text-xs font-bold text-gray-800">OS #{{ evento.id_ordem_servico || 'N/I' }}</span>
+                        <span class="text-xs font-bold text-gray-800">OS #{{ evento.id_ordem_servico || evento.ordem_servico || 'N/I' }}</span>
                       </div>
                       <span class="text-[10px] font-bold text-gray-500 bg-gray-50 border border-gray-100 px-2 py-1 rounded-md">
-                        {{ formatarData(evento.data_conclusao || evento.dt_alteracao) }}
+                        {{ formatarData(evento.data_conclusao || evento.dt_alteracao || evento.data_registro || evento.dt_abertura) }}
                       </span>
                     </div>
                     
-                    <p class="text-sm text-gray-700 mt-2 italic">"{{ evento.descricao || evento.observacao || 'Sem detalhes fornecidos.' }}"</p>
+                    <p class="text-sm text-gray-700 mt-2 italic">"{{ extrairTextoHistorico(evento) }}"</p>
                     
                     <div class="mt-3 pt-3 border-t border-gray-100 flex items-center gap-2">
                       <span class="bg-gray-100 p-1 rounded text-gray-500 text-xs">👤</span>
-                      <span class="text-xs font-semibold text-gray-600">Técnico: {{ evento.tecnico_nome || 'N/I' }}</span>
+                      <span class="text-xs font-semibold text-gray-600">Técnico: {{ evento.tecnico_nome || evento.usuario_nome || 'N/I' }}</span>
                     </div>
                   </div>
                 </div>
@@ -343,15 +339,20 @@ const authHeader = () => {
   return { headers: { Authorization: `Bearer ${token}` } }
 }
 
-const formatarTipo = (tipo: string) => {
-  if (!tipo) return 'Equipamento'
-  return tipo.replace(/_/g, ' ')
-}
-
 const formatarData = (data: string) => {
   if (!data) return ''
   const safeData = data.includes('T') ? data : `${data}T12:00:00`
   return new Date(safeData).toLocaleDateString('pt-BR')
+}
+
+// A FUNÇÃO BLINDADA QUE IMPEDE O TEXTO GENÉRICO
+const extrairTextoHistorico = (evento: any) => {
+  let texto = evento.observacao || evento.justificativa || evento.desc_historico || evento.motivo || evento.descricao || '';
+  
+  if (!texto || texto.trim() === 'Sem detalhes fornecidos.') {
+     texto = evento.descricao_servico || 'Manutenção registrada no sistema (Detalhes adicionais não salvos).';
+  }
+  return texto;
 }
 
 function obterCorStatus(ativo: any) {
@@ -375,17 +376,17 @@ function obterCorStatus(ativo: any) {
 const gerarNomePredio = (ativo: any) => {
   const locId = ativo.localizacao || ativo.id_localizacao || ativo.localizacao_id;
   if (!locId) return 'Sem Localização';
-  const loc = listaLocalizacoes.value.find(l => l.id_localizacao === locId || l.id === locId);
+  const loc = listaLocalizacoes.value.find(l => String(l.id_localizacao || l.id) === String(locId));
   if (!loc) return 'Sala Não Encontrada';
   const predioId = loc.predio || loc.id_predio;
-  const predio = listaPredios.value.find(p => p.id_predio === predioId || p.id === predioId);
+  const predio = listaPredios.value.find(p => String(p.id_predio || p.id) === String(predioId));
   return predio ? (predio.nome_predio || predio.nome) : 'Prédio Desconhecido';
 }
 
 const gerarNomeSala = (ativo: any) => {
   const locId = ativo.localizacao || ativo.id_localizacao || ativo.localizacao_id;
   if (!locId) return 'N/I';
-  const loc = listaLocalizacoes.value.find(l => l.id_localizacao === locId || l.id === locId);
+  const loc = listaLocalizacoes.value.find(l => String(l.id_localizacao || l.id) === String(locId));
   return loc ? (loc.desc_localizacao || loc.nome) : 'Sala Desconhecida';
 }
 
@@ -407,7 +408,7 @@ const ativosFiltrados = computed(() => {
   if (filtroPredioBusca.value) {
     resultado = resultado.filter(a => {
       const locId = a.localizacao || a.id_localizacao || a.localizacao_id
-      const loc = listaLocalizacoes.value.find(l => l.id_localizacao === locId || l.id === locId)
+      const loc = listaLocalizacoes.value.find(l => String(l.id_localizacao || l.id) === String(locId))
       if (!loc) return false
       return String(loc.predio || loc.id_predio) === String(filtroPredioBusca.value)
     })
@@ -439,7 +440,7 @@ const ativosAgrupados = computed(() => {
 
 const localizacoesFiltradas = computed(() => {
   if (!idPredioSelecionado.value) return []
-  return listaLocalizacoes.value.filter(l => (l.predio === idPredioSelecionado.value) || (l.id_predio === idPredioSelecionado.value))
+  return listaLocalizacoes.value.filter(l => String(l.predio || l.id_predio) === String(idPredioSelecionado.value))
 })
 
 async function carregarDados() {
@@ -486,7 +487,7 @@ function abrirModalEdicao(ativo: any) {
     periodicidade_preventiva_dias: ativo.periodicidade_preventiva_dias || 30, dt_ultima_preventiva: ativo.dt_ultima_preventiva || '', id_localizacao: locIdReal || ''
   }
   
-  const locEncontrada = listaLocalizacoes.value.find(l => l.id_localizacao === locIdReal || l.id === locIdReal)
+  const locEncontrada = listaLocalizacoes.value.find(l => String(l.id_localizacao || l.id) === String(locIdReal))
   if (locEncontrada) idPredioSelecionado.value = locEncontrada.predio || locEncontrada.id_predio
   
   modalAberto.value = true
@@ -502,10 +503,31 @@ async function abrirModalDetalhes(ativo: any) {
   
   try {
     const id = ativo.id_ativo || ativo.id
-    const response = await api.get(`/ativo/${id}/historico/`, authHeader())
-    historicoAtivo.value = response.data.dados || response.data || []
+    const pat = ativo.codigo_patrimonial || 'SEM_PAT'
+    
+    let response = await api.get(`/ativo/${id}/historico/`, authHeader()).catch(() => null)
+    let hist = response?.data?.dados || response?.data || []
+    
+    if (hist.length === 0) {
+
+        const resOs = await api.get(`/ordem-servico/`, authHeader()).catch(() => null)
+        const todasOrdens = resOs?.data?.dados || resOs?.data || []
+        
+        hist = todasOrdens.filter((os: any) => {
+            const taConcluida = os.status_ordem_servico === 'CONCLUIDA' || os.status_ordem_servico === 'ENCERRADA'
+            
+            const textoOS = `${os.observacao || ''} ${os.desc_historico || ''} ${os.justificativa || ''}`
+            const ehDoAtivo = String(os.ativo) === String(id) || 
+                              String(os.ativo_id) === String(id) || 
+                              textoOS.includes(pat)
+                              
+            return taConcluida && ehDoAtivo
+        })
+    }
+    
+    historicoAtivo.value = hist
   } catch (error) {
-    console.error("Endpoint de histórico erro:", error)
+    console.error("Erro histórico:", error)
   } finally {
     loadingHistorico.value = false
   }
@@ -527,7 +549,7 @@ async function salvarAtivo() {
     }
 
     if (modoEdicao.value) {
-      if (!form.value.id_ativo) throw new Error("ID do Ativo não foi encontrado.");
+      if (!form.value.id_ativo) throw new Error("ID não encontrado.");
       await api.put(`/ativo/${form.value.id_ativo}/`, payload, authHeader())
       Swal.fire({ title: 'Atualizado!', text: 'Ativo atualizado.', icon: 'success', timer: 2000, showConfirmButton: false })
     } else {
@@ -538,14 +560,7 @@ async function salvarAtivo() {
     fecharModal()
     await carregarDados()
   } catch (error: any) {
-    let msgDetalhada = 'Verifique os dados informados.';
-    if (error.response?.data) {
-      const resposta = error.response.data;
-      if (resposta.erros && typeof resposta.erros === 'object') {
-        msgDetalhada = Object.entries(resposta.erros).map(([campo, msgs]) => `- ${Array.isArray(msgs) ? msgs.join(', ') : String(msgs)}`).join('\n');
-      } else if (resposta.mensagem) { msgDetalhada = resposta.mensagem; }
-    }
-    Swal.fire({ title: 'Erro ao salvar', text: msgDetalhada, icon: 'error', customClass: { popup: 'rounded-2xl' } })
+    Swal.fire({ title: 'Erro ao salvar', text: "Falha na comunicação com o servidor.", icon: 'error', customClass: { popup: 'rounded-2xl' } })
   } finally {
     salvando.value = false
   }

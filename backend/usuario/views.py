@@ -34,7 +34,7 @@ class UsuarioListCreateView(generics.ListCreateAPIView):
         if serializer.is_valid():
             usuario = serializer.save()
 
-            link_confirmacao = (f"{settings.BASE_URL}/usuario/confirmar-email/" f"{usuario.token_confirmacao_email}/")
+            link_confirmacao = f"http://localhost:5173/confirmar-email/{usuario.token_confirmacao_email}"
 
             send_mail(
                 subject="Confirmação de cadastro - TechOrder",
