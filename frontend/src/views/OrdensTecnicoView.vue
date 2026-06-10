@@ -471,7 +471,7 @@ async function pausarOS() {
       placeholderDetalhe = 'Especifique o material (ex: Peça X, Gás, Fiação)...'
     } else if (statusEscolhido === 'AGUARDANDO_TERCEIRO') {
       tituloDetalhe = 'Qual terceiro/empresa?'
-      placeholderDetalhe = 'Especifique quem está atrasando o serviço (ex: Empresa Y)...'
+      placeholderDetalhe = 'Aguarda qual empresa (ex: Empresa Y)...'
     }
 
     const { value: justificativa } = await Swal.fire({ 
