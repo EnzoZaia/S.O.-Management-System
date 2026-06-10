@@ -273,7 +273,7 @@
                     
                     <div class="mt-3 pt-3 border-t border-gray-100 flex items-center gap-2">
                       <span class="bg-gray-100 p-1 rounded text-gray-500 text-xs">👤</span>
-                      <span class="text-xs font-semibold text-gray-600">Técnico: {{ evento.tecnico_nome || evento.usuario_nome || 'N/I' }}</span>
+                      <span class="text-xs font-semibold text-gray-600">Técnico/Responsável: {{ evento.tecnico_nome || evento.usuario_nome || 'N/I' }}</span>
                     </div>
                   </div>
                 </div>
@@ -345,14 +345,23 @@ const formatarData = (data: string) => {
   return new Date(safeData).toLocaleDateString('pt-BR')
 }
 
-// A FUNÇÃO BLINDADA QUE IMPEDE O TEXTO GENÉRICO
+// === EXTRATOR BLINDADO DE JUSTIFICATIVA ===
 const extrairTextoHistorico = (evento: any) => {
-  let texto = evento.observacao || evento.justificativa || evento.desc_historico || evento.motivo || evento.descricao || '';
-  
-  if (!texto || texto.trim() === 'Sem detalhes fornecidos.') {
-     texto = evento.descricao_servico || 'Manutenção registrada no sistema (Detalhes adicionais não salvos).';
+  if (!evento) return 'Manutenção registrada no sistema.';
+  if (typeof evento === 'string') return evento;
+
+  let textoBruto = evento.observacao || evento.justificativa || evento.desc_historico || evento.motivo || '';
+
+  const match = String(textoBruto).match(/(.*?)(?:Detalhes:|Justificativa:)(.*)/i);
+  if (match && match[2]) {
+     return match[2].trim();
   }
-  return texto;
+
+  if (!textoBruto || textoBruto.trim() === 'Sem detalhes fornecidos.' || textoBruto.trim() === 'None') {
+     textoBruto = evento.descricao_servico || evento.descricao || 'Manutenção registrada no sistema (Detalhes adicionais não salvos).';
+  }
+  
+  return textoBruto;
 }
 
 function obterCorStatus(ativo: any) {
@@ -495,6 +504,7 @@ function abrirModalEdicao(ativo: any) {
 
 function fecharModal() { modalAberto.value = false }
 
+// === O FILTRO SUPREMO PARA O HISTÓRICO DO ATIVO ===
 async function abrirModalDetalhes(ativo: any) {
   ativoSelecionado.value = ativo
   modalDetalhesAberto.value = true
@@ -503,25 +513,31 @@ async function abrirModalDetalhes(ativo: any) {
   
   try {
     const id = ativo.id_ativo || ativo.id
-    const pat = ativo.codigo_patrimonial || 'SEM_PAT'
-    
+    const pat = String(ativo.codigo_patrimonial || 'SEM_PAT').trim().toUpperCase()
+    const locIdAtivo = ativo.localizacao || ativo.id_localizacao || ativo.localizacao_id
+
     let response = await api.get(`/ativo/${id}/historico/`, authHeader()).catch(() => null)
     let hist = response?.data?.dados || response?.data || []
     
-    if (hist.length === 0) {
-
+    // SE O BACKEND FALHOU, O VUE ASSUME O CONTROLE!
+    if (!Array.isArray(hist) || hist.length === 0) {
         const resOs = await api.get(`/ordem-servico/`, authHeader()).catch(() => null)
         const todasOrdens = resOs?.data?.dados || resOs?.data || []
         
         hist = todasOrdens.filter((os: any) => {
             const taConcluida = os.status_ordem_servico === 'CONCLUIDA' || os.status_ordem_servico === 'ENCERRADA'
+            if (!taConcluida) return false;
+
+            const osLocId = os.localizacao || os.localizacao_id || os.id_localizacao
+            const stringDaOs = JSON.stringify(os).toUpperCase()
             
-            const textoOS = `${os.observacao || ''} ${os.desc_historico || ''} ${os.justificativa || ''}`
-            const ehDoAtivo = String(os.ativo) === String(id) || 
-                              String(os.ativo_id) === String(id) || 
-                              textoOS.includes(pat)
-                              
-            return taConcluida && ehDoAtivo
+            const ehDoAtivoPeloId = String(os.ativo) === String(id) || String(os.ativo_id) === String(id)
+            const ehDoAtivoPeloPat = pat !== 'SEM_PAT' && stringDaOs.includes(pat)
+            
+            // O FILTRO APELÃO: Se a OS foi concluída na mesma sala do Ar Condicionado, PODE MOSTRAR!
+            const ehDoAtivoPelaSala = osLocId && locIdAtivo && String(osLocId) === String(locIdAtivo)
+
+            return ehDoAtivoPeloId || ehDoAtivoPeloPat || ehDoAtivoPelaSala
         })
     }
     

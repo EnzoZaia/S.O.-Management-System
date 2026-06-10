@@ -1,9 +1,15 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import LoginView from '@/views/LoginView.vue'
+import ConfirmarEmailView from '../views/ConfirmarEmailView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
+    {
+      path: '/confirmar-email/:token',
+      name: 'confirmar-email',
+      component: ConfirmarEmailView
+    },
     {
       path: '/',
       name: 'login',

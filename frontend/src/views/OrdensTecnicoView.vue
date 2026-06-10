@@ -287,7 +287,6 @@ const termoBusca = ref('')
 const modalAberto = ref(false)
 const osSelecionada = ref<any>(null)
 
-// NOVO: Adicionado campo id_ativo para vincular a OS ao banco
 const mostrandoFormConclusao = ref(false)
 const formConclusao = ref({ tipo: '', patrimonio: '', id_ativo: null as any, descricao: '' })
 
@@ -447,7 +446,6 @@ async function pausarOS() {
   }
 }
 
-// AQUI É A MÁGICA FINAL QUE MANDA O ID PRO BANCO
 async function enviarConclusao() {
   if (!formConclusao.value.tipo) return Swal.fire({ title: 'Atenção', text: 'Selecione o que foi consertado.', icon: 'warning' })
   if (formConclusao.value.tipo === 'AR_CONDICIONADO' && !formConclusao.value.patrimonio) return Swal.fire({ title: 'Atenção', text: 'Selecione o Ar Condicionado.', icon: 'warning' })
@@ -465,7 +463,6 @@ async function enviarConclusao() {
       desc_historico: textoHistorico
     }
 
-    // Vincula a OS ao Ativo no Banco de Dados!
     if (formConclusao.value.tipo === 'AR_CONDICIONADO' && formConclusao.value.id_ativo) {
        payload.ativo = formConclusao.value.id_ativo;
        payload.ativo_id = formConclusao.value.id_ativo;
