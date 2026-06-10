@@ -104,9 +104,12 @@ EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 BASE_URL = os.getenv('BASE_URL')
 
-DOMINIO_EMAIL_PERMITIDO = os.getenv(
-    'DOMINIO_EMAIL_PERMITIDO',
-    '@gmail.com'
+DOMINIOS_EMAIL_PERMITIDOS = tuple(
+    dominio.strip().lower()
+    for dominio in os.getenv(
+        'DOMINIOS_EMAIL_PERMITIDOS',
+        '@gmail.com,@fho.edu.br'
+    ).split(',')
 )
 
 # Password validation

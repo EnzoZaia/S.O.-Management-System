@@ -40,9 +40,8 @@ class UsuarioSerializer(serializers.ModelSerializer):
     def validate_email(self, value):
         email = value.strip().lower()
 
-        if not email.endswith(settings.DOMINIO_EMAIL_PERMITIDO):
-            raise serializers.ValidationError(f"O e-mail deve terminar com {settings.DOMINIO_EMAIL_PERMITIDO}.")
-
+        if not email.endswith(settings.DOMINIOS_EMAIL_PERMITIDOS):
+            raise serializers.ValidationError(f"O e-mail deve terminar com um dos domínios permitidos: {', '.join(settings.DOMINIOS_EMAIL_PERMITIDOS)}.")
         usuario_existente = Usuario.objects.filter(email=email).first()
 
         if usuario_existente and usuario_existente.email_confirmado:
@@ -114,8 +113,8 @@ class UsuarioMeusDadosSerializer(serializers.ModelSerializer):
         email = value.strip().lower()
         usuario_logado = self.instance
 
-        if not email.endswith(settings.DOMINIO_EMAIL_PERMITIDO):
-            raise serializers.ValidationError(f"O e-mail deve terminar com {settings.DOMINIO_EMAIL_PERMITIDO}.")
+        if not email.endswith(settings.DOMINIOS_EMAIL_PERMITIDOS):
+            raise serializers.ValidationError(f"O e-mail deve terminar com um dos domínios permitidos: {', '.join(settings.DOMINIOS_EMAIL_PERMITIDOS)}.")
 
         if Usuario.objects.exclude(id_usuario=usuario_logado.id_usuario).filter(email=email).exists():
             raise serializers.ValidationError("Já existe um usuário com este e-mail.")
