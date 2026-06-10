@@ -223,12 +223,12 @@
                   
                   <div class="mt-1">
                     <p class="text-sm font-semibold text-gray-800">
-                      {{ formatarHistorico(evento.desc_historico || evento.motivo).acao }}
+                      {{ formatarHistorico(evento).principal }}
                     </p>
                     
-                    <div v-if="formatarHistorico(evento.desc_historico || evento.motivo).justificativa" class="mt-3 p-3 bg-blue-50/50 border border-blue-100 rounded-lg">
+                    <div v-if="formatarHistorico(evento).detalhe" class="mt-3 p-3 bg-blue-50/50 border border-blue-100 rounded-lg">
                       <p class="text-[10px] font-black text-blue-600 uppercase tracking-wider mb-1">Justificativa / Motivo</p>
-                      <p class="text-sm text-gray-700 italic">"{{ formatarHistorico(evento.desc_historico || evento.motivo).justificativa }}"</p>
+                      <p class="text-sm text-gray-700 italic">"{{ formatarHistorico(evento).detalhe }}"</p>
                     </div>
                   </div>
 
@@ -349,21 +349,6 @@ function limparFiltros() {
   termoBusca.value = ''
 }
 
-const formatarHistorico = (texto: string) => {
-  if (!texto) return { acao: 'Registo sem descrição', justificativa: null }
-  
-  const marcador = '. Justificativa:'
-  const index = texto.indexOf(marcador)
-  
-  if (index !== -1) {
-    return {
-      acao: texto.substring(0, index + 1), 
-      justificativa: texto.substring(index + marcador.length).trim() 
-    }
-  }
-  return { acao: texto, justificativa: null }
-}
-
 const formatarDataSimples = (dataIso: string) => {
   if (!dataIso) return 'N/I'
   return new Date(dataIso).toLocaleDateString('pt-BR')
@@ -415,6 +400,33 @@ const getStatusClass = (status: string) => {
     'REPROVADA': 'bg-red-100 text-red-700 border-red-200'
   }
   return mapa[status] || 'bg-gray-100 text-gray-500 border-gray-200'
+}
+
+const formatarHistorico = (evento: any) => {
+  if (!evento) return { principal: 'Atualização de sistema.', detalhe: '' };
+
+  let textoOriginal = '';
+  if (typeof evento === 'string') {
+    textoOriginal = evento;
+  } else {
+    textoOriginal = evento.desc_historico || evento.descricao || evento.observacao || evento.justificativa || evento.texto_historico || '';
+  }
+
+  if (!textoOriginal) {
+    return { principal: 'Ação registrada no sistema.', detalhe: '' };
+  }
+
+  const regex = /(.*?)(?:Detalhes:|Justificativa:)(.*)/i;
+  const match = String(textoOriginal).match(regex);
+
+  if (match) {
+    return {
+      principal: match[1].trim() || 'Status alterado.',
+      detalhe: match[2].trim()
+    };
+  }
+
+  return { principal: String(textoOriginal).trim(), detalhe: '' };
 }
 
 onMounted(() => carregarOrdens())
