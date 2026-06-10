@@ -262,14 +262,33 @@
 
               <div v-if="formConclusao.tipo === 'AR_CONDICIONADO'">
                 <label class="text-[11px] font-bold text-emerald-600 uppercase tracking-wider mb-1 block">Qual Ar Condicionado? *</label>
-                <select v-model="formConclusao.patrimonio" class="w-full bg-emerald-50/30 border border-emerald-200 text-gray-800 text-sm font-bold rounded-lg px-3 py-2.5 outline-none focus:ring-2 focus:ring-emerald-500 transition-all cursor-pointer">
-                  <option value="" disabled>Selecione o equipamento...</option>
-                  <option v-if="ativosDoPredio.length === 0" value="" disabled>Nenhum ar registrado neste prédio</option>
+                
+                <div class="relative">
+                  <div @click="dropdownAberto = !dropdownAberto" 
+                       class="w-full bg-emerald-50/30 border border-emerald-200 text-gray-800 text-sm font-bold rounded-lg px-3 py-2.5 cursor-pointer flex justify-between items-center transition-all hover:bg-emerald-100/50">
+                    <span class="truncate pr-2">
+                      {{ formConclusao.patrimonio 
+                          ? ativosDoPredio.find(a => a.codigo_patrimonial === formConclusao.patrimonio)?.nomeLimpo 
+                          : 'Selecione o equipamento...' }}
+                    </span>
+                    <span class="text-xs text-emerald-600">▼</span>
+                  </div>
                   
-                  <option v-for="ativo in ativosDoPredio" :key="ativo.id_ativo" :value="ativo.codigo_patrimonial">
-                    {{ ativo.nomeLimpo }}
-                  </option>
-                </select>
+                  <div v-if="dropdownAberto" class="absolute z-50 w-full mt-1 bg-white border border-emerald-200 rounded-lg shadow-2xl max-h-48 overflow-y-auto">
+                    
+                    <div v-if="ativosDoPredio.length === 0" class="px-3 py-3 text-sm text-gray-500 font-medium">
+                      Nenhum ar registrado
+                    </div>
+                    
+                    <div v-else 
+                         v-for="ativo in ativosDoPredio" :key="ativo.id_ativo" 
+                         @click="formConclusao.patrimonio = ativo.codigo_patrimonial; dropdownAberto = false" 
+                         class="px-3 py-2.5 text-sm font-bold text-gray-700 hover:bg-emerald-50 cursor-pointer border-b border-gray-50 last:border-0 truncate">
+                      {{ ativo.nomeLimpo }}
+                    </div>
+
+                  </div>
+                </div>
               </div>
             </div>
             <div class="mb-5">
@@ -298,6 +317,8 @@ import Swal from 'sweetalert2'
 
 const abaAtiva = ref('CORRETIVA')
 
+const dropdownAberto = ref(false)
+
 const ordens = ref<any[]>([])
 const ativos = ref<any[]>([])
 const listaPredios = ref<any[]>([])
@@ -324,31 +345,27 @@ const prediosUnicos = computed(() => {
 
 const ativosDoPredio = computed(() => {
   if (!osSelecionada.value) return []
-  
-  const predioIdDaOS = osSelecionada.value.predio_id || osSelecionada.value.predio
+
   const nomePredioOS = String(osSelecionada.value.predio_nome || '').toLowerCase().trim()
 
   return ativos.value.filter(ativo => {
-    const locIdAtivo = ativo.localizacao || ativo.id_localizacao || ativo.localizacao_id
-    if (!locIdAtivo) return false
+    const locId = ativo.localizacao || ativo.id_localizacao || ativo.localizacao_id
+    if (!locId) return false
 
-    const locAtivo = listaLocalizacoes.value.find(l => String(l.id_localizacao || l.id) === String(locIdAtivo))
-    if (locAtivo) {
-       const pIdAtivo = locAtivo.predio || locAtivo.id_predio
-       if (String(pIdAtivo) === String(predioIdDaOS)) return true
-       
-       const predioObj = listaPredios.value.find(p => String(p.id_predio || p.id) === String(pIdAtivo))
-       if (predioObj) {
-          const nomeP = String(predioObj.nome_predio || predioObj.nome).toLowerCase().trim()
-          if (nomeP && (nomeP.includes(nomePredioOS) || nomePredioOS.includes(nomeP))) return true
-       }
-    }
-    return false
+    const loc = listaLocalizacoes.value.find(l => String(l.id_localizacao || l.id) === String(locId))
+    if (!loc) return false
+
+    const predio = listaPredios.value.find(p => String(p.id_predio || p.id) === String(loc.predio || loc.id_predio))
+    if (!predio) return false
+
+    const nomeP = String(predio.nome_predio || predio.nome).toLowerCase().trim()
+    return nomeP.includes(nomePredioOS) || nomePredioOS.includes(nomeP)
+    
   }).map(ativo => {
-    let nomeLocal = 'Local N/I';
-    const locId = ativo.localizacao || ativo.id_localizacao || ativo.localizacao_id;
-    const loc = listaLocalizacoes.value.find(l => String(l.id_localizacao || l.id) === String(locId));
-    if (loc) nomeLocal = loc.desc_localizacao || loc.nome || 'Local N/I';
+    let nomeLocal = 'Local N/I'
+    const locId = ativo.localizacao || ativo.id_localizacao || ativo.localizacao_id
+    const loc = listaLocalizacoes.value.find(l => String(l.id_localizacao || l.id) === String(locId))
+    if (loc) nomeLocal = loc.desc_localizacao || loc.nome || 'Local N/I'
 
     const marca = ativo.marca?.replace(/\*/g, '').trim() || ''
     const modelo = ativo.modelo?.replace(/\*/g, '').trim() || ''
