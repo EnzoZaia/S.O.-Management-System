@@ -134,7 +134,7 @@
               </div>
               
               <span :class="osSelecionada.prioridade_urgencia === 'SIM' ? 'bg-red-100 text-red-700 border-red-200' : 'bg-gray-100 text-gray-600 border-gray-200'" class="px-4 py-1.5 rounded-full text-xs font-extrabold border shadow-sm">
-                {{ osSelecionada.prioridade_urgencia === 'SIM' ? ' URGENTE' : 'Prioridade: Normal' }}
+                {{ osSelecionada.prioridade_urgencia === 'SIM' ? '🚨 URGENTE' : 'Prioridade: Normal' }}
               </span>
             </div>
             
@@ -212,10 +212,12 @@
                 
                 <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
                   <div class="flex justify-between items-start mb-3">
+                    
                     <span class="text-xs font-bold text-gray-800 flex items-center gap-2">
                       <span class="bg-gray-100 p-1 rounded text-gray-500">👤</span> 
-                      {{ evento.usuario_nome || 'Sistema Automático' }}
+                      {{ descobrirAutor(evento, osSelecionada) }}
                     </span>
+                    
                     <span class="text-[10px] font-bold text-gray-500 bg-gray-50 border border-gray-100 px-2 py-1 rounded-md">
                       {{ formatarDataHora(evento.data_registro || evento.dt_alteracao) }}
                     </span>
@@ -223,12 +225,12 @@
                   
                   <div class="mt-1">
                     <p class="text-sm font-semibold text-gray-800">
-                      {{ formatarHistorico(evento).principal }}
+                      {{ formatarHistorico(evento, osSelecionada).principal }}
                     </p>
                     
-                    <div v-if="formatarHistorico(evento).detalhe" class="mt-3 p-3 bg-blue-50/50 border border-blue-100 rounded-lg">
+                    <div v-if="formatarHistorico(evento, osSelecionada).detalhe" class="mt-3 p-3 bg-blue-50/50 border border-blue-100 rounded-lg">
                       <p class="text-[10px] font-black text-blue-600 uppercase tracking-wider mb-1">Justificativa / Motivo</p>
-                      <p class="text-sm text-gray-700 italic">"{{ formatarHistorico(evento).detalhe }}"</p>
+                      <p class="text-sm text-gray-700 italic">"{{ formatarHistorico(evento, osSelecionada).detalhe }}"</p>
                     </div>
                   </div>
 
@@ -374,35 +376,49 @@ const extrairProblema = (descricao: string) => {
 
 const formatarStatus = (status: string) => {
   const mapa: Record<string, string> = { 
-    'ABERTA': 'Aberta', 
-    'APROVADA': 'Para Iniciar', 
-    'EM_EXECUCAO': 'Em Execução', 
-    'AGUARDANDO_MATERIAL': 'Falta Material', 
-    'AGUARDANDO_TERCEIRO': 'Aguard. Terceiro', 
-    'CONCLUIDA': 'Concluída', 
-    'ENCERRADA': 'Encerrada',
-    'CANCELADA': 'Cancelada',
-    'REPROVADA': 'Reprovada'
+    'ABERTA': 'Aberta', 'APROVADA': 'Para Iniciar', 'EM_EXECUCAO': 'Em Execução', 
+    'AGUARDANDO_MATERIAL': 'Falta Material', 'AGUARDANDO_TERCEIRO': 'Aguard. Terceiro', 
+    'CONCLUIDA': 'Concluída', 'ENCERRADA': 'Encerrada', 'CANCELADA': 'Cancelada', 'REPROVADA': 'Reprovada'
   }
   return mapa[status] || status
 }
 
 const getStatusClass = (status: string) => {
   const mapa: Record<string, string> = { 
-    'ABERTA': 'bg-slate-100 text-slate-700 border-slate-200',
-    'APROVADA': 'bg-emerald-100 text-emerald-700 border-emerald-200', 
-    'EM_EXECUCAO': 'bg-amber-100 text-amber-700 border-amber-200', 
-    'AGUARDANDO_MATERIAL': 'bg-orange-100 text-orange-700 border-orange-200', 
-    'AGUARDANDO_TERCEIRO': 'bg-purple-100 text-purple-700 border-purple-200',
-    'CONCLUIDA': 'bg-teal-100 text-teal-700 border-teal-200',
-    'ENCERRADA': 'bg-gray-100 text-gray-500 border-gray-200',
-    'CANCELADA': 'bg-red-100 text-red-700 border-red-200',
-    'REPROVADA': 'bg-red-100 text-red-700 border-red-200'
+    'ABERTA': 'bg-slate-100 text-slate-700 border-slate-200', 'APROVADA': 'bg-emerald-100 text-emerald-700 border-emerald-200', 
+    'EM_EXECUCAO': 'bg-amber-100 text-amber-700 border-amber-200', 'AGUARDANDO_MATERIAL': 'bg-orange-100 text-orange-700 border-orange-200', 
+    'AGUARDANDO_TERCEIRO': 'bg-purple-100 text-purple-700 border-purple-200', 'CONCLUIDA': 'bg-teal-100 text-teal-700 border-teal-200',
+    'ENCERRADA': 'bg-gray-100 text-gray-500 border-gray-200', 'CANCELADA': 'bg-red-100 text-red-700 border-red-200', 'REPROVADA': 'bg-red-100 text-red-700 border-red-200'
   }
   return mapa[status] || 'bg-gray-100 text-gray-500 border-gray-200'
 }
 
-const formatarHistorico = (evento: any) => {
+// === FUNÇÃO PARA DEDUZIR O AUTOR DA AÇÃO ===
+const descobrirAutor = (evento: any, os: any) => {
+  // Se o backend mandou um nome real
+  if (evento.usuario_nome && evento.usuario_nome !== 'Sistema Automático' && evento.usuario_nome !== 'None') {
+    return evento.usuario_nome;
+  }
+  
+  const texto = String(evento.desc_historico || evento.descricao || evento.observacao || '');
+  
+  // Se for abertura, o autor foi o solicitante
+  if (texto.includes('aberta por') || texto.includes('Status inicial: ABERTA')) {
+    return extrairSolicitante(os);
+  }
+  // Se envolveu atribuição ou aprovação, foi o Gestor
+  if (texto.includes('Técnico atribuído') || texto.includes('-> EM_EXECUCAO')) {
+    return os.gestor_nome || 'Gestor Responsável';
+  }
+  // Se envolveu pausas ou conclusão, foi o Técnico
+  if (texto.includes('CONCLUIDA') || texto.includes('ENCERRADA') || texto.includes('AGUARDANDO_') || texto.includes('Serviço concluído')) {
+    return os.tecnico_nome || 'Técnico Responsável';
+  }
+  
+  return 'Sistema Automático';
+}
+
+const formatarHistorico = (evento: any, os: any) => {
   if (!evento) return { principal: 'Atualização de sistema.', detalhe: '' };
 
   let textoOriginal = '';
@@ -419,14 +435,17 @@ const formatarHistorico = (evento: any) => {
   const regex = /(.*?)(?:Detalhes:|Justificativa:)(.*)/i;
   const match = String(textoOriginal).match(regex);
 
-  if (match) {
-    return {
-      principal: match[1].trim() || 'Status alterado.',
-      detalhe: match[2].trim()
-    };
+  let principal = match ? match[1].trim() : String(textoOriginal).trim();
+  let detalhe = match ? match[2].trim() : '';
+
+  if (os && principal.includes('Usuário Anônimo')) {
+    principal = principal.replace('Usuário Anônimo', extrairSolicitante(os));
   }
 
-  return { principal: String(textoOriginal).trim(), detalhe: '' };
+  return {
+    principal: principal || 'Status alterado.',
+    detalhe: detalhe
+  };
 }
 
 onMounted(() => carregarOrdens())
