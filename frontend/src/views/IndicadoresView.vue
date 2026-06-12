@@ -41,7 +41,7 @@
       <div class="bg-white rounded-xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow cursor-pointer relative overflow-hidden group">
         <div class="bg-purple-600 absolute -right-4 -top-4 w-24 h-24 rounded-full opacity-10 transition-transform group-hover:scale-110"></div>
         <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-2"><span>⏱️</span> Tempo Médio </p>
-        <p class="text-4xl font-extrabold tracking-tight mb-1 text-purple-700">{{ dadosBrutos.tempo_medio || '0d' }}</p>
+        <p class="text-4xl font-extrabold tracking-tight mb-1 text-purple-700">{{ formatarTempoMedio(dadosBrutos.tempo_medio) }}</p>
         <p class="text-[11px] text-gray-400 font-semibold uppercase">Média de Resolução</p>
       </div>
     </div>
@@ -161,6 +161,22 @@ import { Doughnut, Line as LineChart } from 'vue-chartjs'
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, PointElement, LineElement, Filler)
 
 const filtroPeriodo = ref('30d')
+
+const formatarTempoMedio = (tempo: string) => {
+  if (!tempo || tempo === '0d') return '0h';
+  
+  const valor = parseFloat(String(tempo).replace(',', '.').replace(/[^0-9.]/g, ''));
+  if (isNaN(valor) || valor === 0) return '0h';
+
+  const horasTotais = valor * 24;
+  const horas = Math.floor(horasTotais);
+  const minutos = Math.round((horasTotais - horas) * 60);
+
+  if (horas === 0) return `${minutos}m`;
+  if (minutos === 0) return `${horas}h`;
+  
+  return `${horas}h ${minutos}m`;
+}
 
 const dadosBrutos = ref({
   totalOrdens: 0, abertas: 0, emExecucao: 0, concluidas: 0, tempo_medio: '0d',
