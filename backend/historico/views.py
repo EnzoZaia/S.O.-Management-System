@@ -9,7 +9,7 @@ from utils.permissions import usuario_tem_grupo
 # View para listar o histórico de ordens de serviço
 class HistoricoListView(generics.ListAPIView):
     serializer_class = HistoricoSerializer
-    permission_classes = (IsAuthenticated)
+    permission_classes = (IsAuthenticated,)
 
     def get_queryset(self):
         usuario = self.request.user

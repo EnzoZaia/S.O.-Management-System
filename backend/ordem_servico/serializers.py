@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from django.utils import timezone
+from ordem_servico.builders import OrdemServicoDiretor
 from ordem_servico.models import OrdemServico
 
 class OrdemServicoSerializer(serializers.ModelSerializer):
@@ -73,12 +73,18 @@ class OrdemServicoSerializer(serializers.ModelSerializer):
         else:
             usuario_solicitante = None
 
-        return OrdemServico.objects.create(
-            solicitante=usuario_solicitante,
-            tipo_manutencao='CORRETIVA',
-            status_ordem_servico='ABERTA',
-            dt_abertura=timezone.now(),
-            **validated_data
+        localizacao = validated_data.pop('localizacao')
+        descricao = validated_data.pop('descricao_servico')
+        categoria_manutencao = validated_data.pop('categoria_manutencao', None)
+        prioridade_urgencia = validated_data.pop('prioridade_urgencia', None)
+
+        return OrdemServicoDiretor().construir_corretiva_do_solicitante(
+            usuario=usuario_solicitante,
+            localizacao=localizacao,
+            descricao=descricao,
+            categoria_manutencao=categoria_manutencao,
+            prioridade_urgencia=prioridade_urgencia,
+            **validated_data,
         )
 
 class AtribuirTecnicoSerializer(serializers.Serializer):

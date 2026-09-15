@@ -24,7 +24,7 @@ class UsuarioListCreateView(generics.ListCreateAPIView):
     # aplicando as permissões de IsAuthenticated e IsGerente para garantir que apenas usuários autenticados e com a permissão de gerente possam acessar essa funcionalidade.
     queryset = Usuario.objects.exclude(nome__icontains='[DESATIVADO]').order_by('nome')
     serializer_class = UsuarioSerializer
-    #permission_classes = (IsAuthenticated, IsGerente)
+    permission_classes = (IsAuthenticated, IsGerente)
     
     def create(self, request, *args, **kwargs):    
         Usuario.objects.filter(email_confirmado=False, dt_expiracao_token__lt=timezone.now()).delete()
@@ -63,7 +63,7 @@ class UsuarioListCreateView(generics.ListCreateAPIView):
 class UsuarioRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Usuario.objects.all()
     serializer_class = UsuarioSerializer
-    #permission_classes = (IsAuthenticated, IsGerente)
+    permission_classes = (IsAuthenticated, IsGerente)
 
     http_method_names = ['get', 'delete', 'put', 'patch']
 
