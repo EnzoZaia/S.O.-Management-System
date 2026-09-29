@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from ordem_servico.builders import OrdemServicoDiretor
+from ordem_servico.fachada import OrdemServicoFacade
 from ordem_servico.models import OrdemServico
 
 class OrdemServicoSerializer(serializers.ModelSerializer):
@@ -63,29 +63,16 @@ class OrdemServicoSerializer(serializers.ModelSerializer):
         return value
 
     def create(self, validated_data):
+        # A abertura (Diretor/Builder + histórico) é responsabilidade da OrdemServicoFacade;
+        # a view chama a fachada direto, e este create só garante o mesmo fluxo se alguém usar serializer.save().
         request = self.context.get('request')
-
-        validated_data.pop('status_ordem_servico', None)
-        validated_data.pop('tipo_manutencao', None)
 
         if request and request.user and request.user.is_authenticated:
             usuario_solicitante = request.user
         else:
             usuario_solicitante = None
 
-        localizacao = validated_data.pop('localizacao')
-        descricao = validated_data.pop('descricao_servico')
-        categoria_manutencao = validated_data.pop('categoria_manutencao', None)
-        prioridade_urgencia = validated_data.pop('prioridade_urgencia', None)
-
-        return OrdemServicoDiretor().construir_corretiva_do_solicitante(
-            usuario=usuario_solicitante,
-            localizacao=localizacao,
-            descricao=descricao,
-            categoria_manutencao=categoria_manutencao,
-            prioridade_urgencia=prioridade_urgencia,
-            **validated_data,
-        )
+        return OrdemServicoFacade().abrir(usuario_solicitante, validated_data)
 
 class AtribuirTecnicoSerializer(serializers.Serializer):
     tecnico = serializers.IntegerField()

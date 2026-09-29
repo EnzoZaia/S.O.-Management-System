@@ -1,17 +1,15 @@
 from rest_framework import generics, status
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, AllowAny
-from django.utils import timezone
 from rest_framework.response import Response
 
 from ordem_servico.acesso import resolver_fabrica_acesso
+from ordem_servico.fachada import OrdemServicoFacade, OperacaoOrdemServicoError
 from ordem_servico.models import OrdemServico
-from ordem_servico.processadores import obter_fabrica_processador
 from ordem_servico.serializers import OrdemServicoSerializer, AtribuirTecnicoSerializer
 from usuario.models import Usuario
 from utils.responses import resposta_sucesso, resposta_erro
 from utils.permissions import usuario_tem_grupo
-from utils.historico import registrar_historico
 from utils.permissions import IsGerenteOuGestorOuTecnico
 
 class OrdemServicoListCreateView(generics.ListCreateAPIView):
@@ -35,26 +33,10 @@ class OrdemServicoListCreateView(generics.ListCreateAPIView):
         serializer = self.get_serializer(data=request.data, context={'request': request})
 
         if serializer.is_valid():
-            ordem_servico = serializer.save()
-
-            # Define as variáveis de verificação de autenticação
+            # Totem (AllowAny) chega sem usuário autenticado: a fachada trata o fallback do histórico.
             usuario_autenticado = request.user if request.user and request.user.is_authenticated else None
-            
-            if usuario_autenticado:
-                usuario_historico = usuario_autenticado
-                nome_solicitante = request.user.nome
-            else:
-                # IMPORTANTE: Busca o primeiro usuário do banco para assinar o histórico do totem
-                from usuario.models import Usuario
-                usuario_historico = Usuario.objects.first() # Pega o administrador ou usuário ID 1 do banco
-                nome_solicitante = "Usuário Anônimo"
 
-            # Agora passamos um objeto de usuário válido que nunca será nulo
-            registrar_historico(
-                ordem_servico, 
-                usuario_historico, 
-                f"Ordem de serviço aberta por {nome_solicitante}. Status inicial: ABERTA."
-            )
+            ordem_servico = OrdemServicoFacade().abrir(usuario_autenticado, serializer.validated_data)
 
             return resposta_sucesso("Ordem de serviço aberta com sucesso.", OrdemServicoSerializer(ordem_servico).data, status.HTTP_201_CREATED)
 
@@ -79,35 +61,23 @@ class OrdemServicoRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIVie
     def update(self, request, *args, **kwargs):
         parcial = kwargs.pop("partial", False)
         ordem_servico = self.get_object()
-        usuario = request.user
+        fachada = OrdemServicoFacade()
 
-        if ordem_servico.status_ordem_servico in ["ENCERRADA", "CANCELADA"]:
-            return resposta_erro("Esta ordem não pode mais ser alterada.", None)
+        # Checa status final antes de validar o payload para manter a precedência de erros da API.
+        try:
+            fachada.garantir_alteracao_permitida(ordem_servico)
+        except OperacaoOrdemServicoError as erro:
+            return resposta_erro(erro.mensagem, None)
 
-        dados = request.data.copy()
-        novo_status = dados.get("status_ordem_servico")
-        status_anterior = ordem_servico.status_ordem_servico
-
-        serializer = self.get_serializer(ordem_servico, data=dados, partial=parcial)
+        serializer = self.get_serializer(ordem_servico, data=request.data, partial=parcial)
 
         if serializer.is_valid():
-            ordem_servico = serializer.save()
+            motivo_tecnico = request.data.get("observacao", "")
 
-            if novo_status and novo_status != status_anterior:
-                motivo_tecnico = request.data.get("observacao", dados.get("observacao", ""))
-
-                fabrica = obter_fabrica_processador(ordem_servico.tipo_manutencao)
-                processador = fabrica.criar_processador()
-                processador.finalizar(ordem_servico, motivo_tecnico)
-
-                if novo_status == "CONCLUIDA":
-                    ordem_servico.save()
-
-                texto_historico = f"Status alterado: {status_anterior} -> {novo_status}."
-                if motivo_tecnico and str(motivo_tecnico).strip():
-                    texto_historico += f" Detalhes: {str(motivo_tecnico).strip()}"
-
-                registrar_historico(ordem_servico, usuario, texto_historico)
+            try:
+                ordem_servico = fachada.alterar_status(ordem_servico, request.user, serializer.validated_data, motivo_tecnico)
+            except OperacaoOrdemServicoError as erro:
+                return resposta_erro(erro.mensagem, None)
 
             return resposta_sucesso("Ordem de serviço atualizada com sucesso.", self.get_serializer(ordem_servico).data)
 
@@ -119,20 +89,11 @@ class OrdemServicoDestroyView(generics.RetrieveUpdateDestroyAPIView):
 
     def destroy(self, request, *args, **kwargs):
         ordem_servico = self.get_object()
-        usuario = request.user
 
-        if ordem_servico.status_ordem_servico in ["ENCERRADA", "CANCELADA"]:
-            return resposta_erro("Esta ordem já está encerrada ou cancelada.", None)
-
-        ordem_servico.status_ordem_servico = "CANCELADA"
-        ordem_servico.dt_conclusao = timezone.now()
-        ordem_servico.save()
-
-        registrar_historico(
-            ordem_servico,
-            usuario,
-            f"OS cancelada por {usuario.nome}"
-        )
+        try:
+            OrdemServicoFacade().cancelar(ordem_servico, request.user)
+        except OperacaoOrdemServicoError as erro:
+            return resposta_erro(erro.mensagem, None)
 
         return resposta_sucesso("Ordem de serviço cancelada com sucesso.", None)
 
@@ -156,20 +117,10 @@ class OrdemServicoAtribuirTecnicoView(APIView):
 
         tecnico = Usuario.objects.get(id_usuario=serializer.validated_data["tecnico"])
 
-        if not usuario_tem_grupo(tecnico, "TECNICO"):
-            return resposta_erro("Usuário não é técnico.", None)
-
-        os.tecnico = tecnico
-
-        if os.gestor is None:
-            os.gestor = request.user
-
-        if os.status_ordem_servico == "ABERTA":
-            os.status_ordem_servico = "APROVADA"
-
-        os.save()
-
-        registrar_historico(os, request.user, f"Técnico atribuído: {tecnico.nome}")
+        try:
+            OrdemServicoFacade().atribuir_tecnico(os, tecnico, request.user)
+        except OperacaoOrdemServicoError as erro:
+            return resposta_erro(erro.mensagem, None)
 
         return resposta_sucesso("Técnico atribuído", None)
 
