@@ -134,8 +134,6 @@ class ProcessadorDecorator(ProcessadorOrdemServico):
 
     @abstractmethod
     def finalizar(self, ordem_servico: OrdemServico, motivo_tecnico: str) -> None:
-        # Abstrato para impedir instanciar o decorator "vazio", mas já traz a
-        # delegação pronta: cada concreto acrescenta seu comportamento e chama super().
         self._processador.finalizar(ordem_servico, motivo_tecnico)
 
 
@@ -148,8 +146,6 @@ class ComHistoricoDecorator(ProcessadorDecorator):
         self._status_anterior = status_anterior
 
     def finalizar(self, ordem_servico: OrdemServico, motivo_tecnico: str) -> None:
-        # Captura o status pedido ANTES de delegar: o ProcessadorPreventiva troca
-        # CONCLUIDA por ENCERRADA, e o histórico registra o que foi solicitado.
         novo_status = ordem_servico.status_ordem_servico
 
         super().finalizar(ordem_servico, motivo_tecnico)

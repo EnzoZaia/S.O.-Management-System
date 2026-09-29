@@ -15,16 +15,11 @@ from utils.permissions import IsGerenteOuGestorOuTecnico
 class OrdemServicoListCreateView(generics.ListCreateAPIView):
     serializer_class = OrdemServicoSerializer
 
-    # Remove IsAuthenticated fixo e define a regra por método
     def get_permissions(self):
         if self.request.method == 'POST':
             return [AllowAny(),]
         return [IsAuthenticated()]
 
-    #permission_classes = (IsAuthenticated,)
-
-    # Delega ao Abstract Factory de acesso: a mesma fábrica resolve o escopo de
-    # listagem e a regra de dashboard do perfil, então os dois nunca divergem.
     def get_queryset(self):
         fabrica = resolver_fabrica_acesso(self.request.user)
         return fabrica.criar_escopo_consulta().filtrar(self.request.user)
@@ -33,7 +28,6 @@ class OrdemServicoListCreateView(generics.ListCreateAPIView):
         serializer = self.get_serializer(data=request.data, context={'request': request})
 
         if serializer.is_valid():
-            # Totem (AllowAny) chega sem usuário autenticado: a fachada trata o fallback do histórico.
             usuario_autenticado = request.user if request.user and request.user.is_authenticated else None
 
             ordem_servico = OrdemServicoFacade().abrir(usuario_autenticado, serializer.validated_data)
@@ -44,7 +38,7 @@ class OrdemServicoListCreateView(generics.ListCreateAPIView):
 
 class OrdemServicoRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = OrdemServicoSerializer
-    
+
     def get_permissions(self):
         if self.request.method in ['PATCH', 'PUT', 'DELETE']:
             return [IsAuthenticated(), IsGerenteOuGestorOuTecnico()]
@@ -63,7 +57,6 @@ class OrdemServicoRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIVie
         ordem_servico = self.get_object()
         fachada = OrdemServicoFacade()
 
-        # Checa status final antes de validar o payload para manter a precedência de erros da API.
         try:
             fachada.garantir_alteracao_permitida(ordem_servico)
         except OperacaoOrdemServicoError as erro:

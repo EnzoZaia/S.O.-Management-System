@@ -70,8 +70,6 @@ def test_abrir_os_corretiva_pelo_totem_anonimo_usa_diretor():
     """Ponta-a-ponta: POST /ordem-servico/ sem autenticação (fluxo do totem) passa pelo serializer -> Diretor -> Builder."""
     predio = Predio.objects.create(nome_predio="Bloco B")
     localizacao = Localizacao.objects.create(predio=predio, desc_localizacao="Recepção")
-    # O fluxo do totem registra o histórico com Usuario.objects.first() quando
-    # não há autenticação, então precisa existir ao menos um usuário no banco.
     Usuario.objects.create(nome="Admin", email="admin@fho.edu.br", senha_hash="x")
 
     client = APIClient()

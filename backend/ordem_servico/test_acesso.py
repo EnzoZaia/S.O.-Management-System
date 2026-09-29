@@ -43,7 +43,7 @@ def _criar_os(localizacao, **campos):
 
 @pytest.mark.django_db
 def test_resolver_fabrica_acesso_por_grupo():
-    localizacao = _criar_localizacao()  # garante apps carregados; não usado diretamente aqui
+    localizacao = _criar_localizacao()
 
     gerente = _criar_usuario_com_grupo("Gerente", "gerente.acesso@fho.edu.br", "GERENTE")
     gestor = _criar_usuario_com_grupo("Gestor", "gestor.acesso@fho.edu.br", "GESTOR")

@@ -30,7 +30,6 @@ from usuario.models import Usuario
 from utils.historico import registrar_historico
 from utils.permissions import usuario_tem_grupo
 
-# Uma OS nesses status está fechada: nenhuma alteração ou cancelamento é aceito.
 STATUS_FINAIS = ("ENCERRADA", "CANCELADA")
 
 
@@ -57,13 +56,9 @@ class OrdemServicoFacade:
     MENSAGEM_CANCELAMENTO_BLOQUEADO = "Esta ordem já está encerrada ou cancelada."
 
     def __init__(self, diretor=None, resolver_fabrica_processador=obter_fabrica_processador) -> None:
-        # Os subsistemas são injetáveis para facilitar testes; por padrão usa os reais.
         self._diretor = diretor or OrdemServicoDiretor()
         self._resolver_fabrica_processador = resolver_fabrica_processador
 
-    # ------------------------------------------------------------------
-    # Regra de status finais
-    # ------------------------------------------------------------------
     @staticmethod
     def esta_em_status_final(ordem_servico: OrdemServico) -> bool:
         return ordem_servico.status_ordem_servico in STATUS_FINAIS
@@ -73,9 +68,6 @@ class OrdemServicoFacade:
         if self.esta_em_status_final(ordem_servico):
             raise OrdemServicoStatusFinalError(self.MENSAGEM_ALTERACAO_BLOQUEADA)
 
-    # ------------------------------------------------------------------
-    # Operações
-    # ------------------------------------------------------------------
     @transaction.atomic
     def abrir(self, usuario, dados_validados: dict) -> OrdemServico:
         """Abre uma OS corretiva via Diretor/Builder e registra o histórico de abertura.
@@ -86,7 +78,6 @@ class OrdemServicoFacade:
         """
         dados = dict(dados_validados)
 
-        # Status e tipo de uma OS nova são decididos pelo Builder, nunca pelo cliente.
         dados.pop("status_ordem_servico", None)
         dados.pop("tipo_manutencao", None)
 
@@ -108,7 +99,7 @@ class OrdemServicoFacade:
             usuario_historico = usuario
             nome_solicitante = usuario.nome
         else:
-            usuario_historico = Usuario.objects.first()  # Administrador / usuário ID 1 assina o histórico do totem
+            usuario_historico = Usuario.objects.first()
             nome_solicitante = "Usuário Anônimo"
 
         registrar_historico(
@@ -130,7 +121,6 @@ class OrdemServicoFacade:
         status_anterior = ordem_servico.status_ordem_servico
         novo_status = dados_validados.get("status_ordem_servico")
 
-        # Mesmo efeito de ModelSerializer.update(): OrdemServico não tem campos many-to-many.
         for campo, valor in dados_validados.items():
             setattr(ordem_servico, campo, valor)
         ordem_servico.save()
@@ -139,7 +129,6 @@ class OrdemServicoFacade:
             processador = self._montar_processador(ordem_servico, usuario, status_anterior)
             processador.finalizar(ordem_servico, motivo_tecnico)
 
-            # O processador só altera campos (dt_conclusao, ativo, ENCERRADA) na conclusão.
             if novo_status == "CONCLUIDA":
                 ordem_servico.save()
 
@@ -177,9 +166,6 @@ class OrdemServicoFacade:
         registrar_historico(ordem_servico, usuario, f"OS cancelada por {usuario.nome}")
         return ordem_servico
 
-    # ------------------------------------------------------------------
-    # Montagem da pilha de decorators
-    # ------------------------------------------------------------------
     def _montar_processador(self, ordem_servico: OrdemServico, usuario, status_anterior: str) -> ProcessadorOrdemServico:
         """Factory Method escolhe o processador; a fachada o envolve em histórico e, por fora, em log."""
         processador = self._resolver_fabrica_processador(ordem_servico.tipo_manutencao).criar_processador()

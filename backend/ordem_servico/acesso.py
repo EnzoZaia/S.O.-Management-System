@@ -66,7 +66,7 @@ class _RegraDashboardBase(RegraDashboard):
             base_query = base_query.filter(dt_abertura__year=ano_passado, dt_abertura__month=mes_passado)
         elif periodo == 'ano':
             base_query = base_query.filter(dt_abertura__year=agora.year)
-        else:  # '30d' default
+        else:
             limite_data = agora - timedelta(days=30)
             base_query = base_query.filter(dt_abertura__gte=limite_data)
 
@@ -145,7 +145,6 @@ class RegraDashboardGerente(_RegraDashboardBase):
 
 class RegraDashboardGestor(_RegraDashboardBase):
     def _query_base(self, usuario) -> QuerySet:
-        # Regra intencionalmente diferente da listagem: o Gestor também acompanha REPROVADA no dashboard.
         return OrdemServico.objects.filter(
             Q(gestor=usuario) | Q(status_ordem_servico='ABERTA') | Q(status_ordem_servico='REPROVADA')
         )

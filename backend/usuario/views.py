@@ -15,17 +15,11 @@ from django.utils import timezone
 
 from django.conf import settings
 
-# Create your views here.
-# As views abaixo utilizam os serializers definidos em serializers.py para criar, listar, atualizar e deletar usuários, 
-# além de permitir que o usuário autenticado visualize e atualize seus próprios dados. 
-# As permissões são configuradas para garantir que apenas usuários autenticados e com a permissão de gerente possam acessar as funcionalidades de gerenciamento de usuários.
 class UsuarioListCreateView(generics.ListCreateAPIView):
-    # A view para listar e criar usuários, utilizando o serializer UsuarioSerializer 
-    # aplicando as permissões de IsAuthenticated e IsGerente para garantir que apenas usuários autenticados e com a permissão de gerente possam acessar essa funcionalidade.
     queryset = Usuario.objects.exclude(nome__icontains='[DESATIVADO]').order_by('nome')
     serializer_class = UsuarioSerializer
     permission_classes = (IsAuthenticated, IsGerente)
-    
+
     def create(self, request, *args, **kwargs):    
         Usuario.objects.filter(email_confirmado=False, dt_expiracao_token__lt=timezone.now()).delete()
 
@@ -56,10 +50,7 @@ class UsuarioListCreateView(generics.ListCreateAPIView):
             return resposta_sucesso("Usuário cadastrado com sucesso. E-mail de confirmação enviado.", UsuarioSerializer(usuario).data, status.HTTP_201_CREATED)
 
         return resposta_erro("Erro ao cadastrar usuário.", serializer.errors)
-    
-# A view para recuperar, atualizar e deletar um usuário específico
-# utilizando o serializer UsuarioSerializer e aplicando as permissões de IsAuthenticated e IsGerente para garantir que apenas usuários autenticados
-# e com a permissão de gerente possam acessar essa funcionalidade.
+
 class UsuarioRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Usuario.objects.all()
     serializer_class = UsuarioSerializer
@@ -67,14 +58,12 @@ class UsuarioRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
 
     http_method_names = ['get', 'delete', 'put', 'patch']
 
-    # Sobrescrevemos os métodos retrieve e destroy para personalizar as respostas de sucesso
-    # utilizando as funções resposta_sucesso e resposta_erro para garantir uma resposta consistente em toda a API.
     def retrieve(self, request, *args, **kwargs):
         usuario = self.get_object()
         serializer = self.get_serializer(usuario)
 
         return resposta_sucesso("Usuário encontrado com sucesso.", serializer.data)
-    
+
     def update(self, request, *args, **kwargs):
         usuario = self.get_object()
 
@@ -101,12 +90,9 @@ class UsuarioRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
 
         return resposta_sucesso("Usuário atualizado com sucesso.", UsuarioSerializer(usuario).data)
 
-    # O método destroy é sobrescrito para personalizar a resposta de sucesso ao deletar um usuário, utilizando a função resposta_sucesso para garantir uma resposta consistente em toda a API.
     def destroy(self, request, *args, **kwargs):
         usuario = self.get_object()
-        
-        # Soft delete por modificação de string: preserva a chave estrangeira nas OS,
-        # mas remove o acesso ao e-mail e marca visualmente como inativo.
+
         usuario.nome = f"[DESATIVADO] {usuario.nome}"
         usuario.email = f"desativado_{usuario.id_usuario}_{usuario.email}"
         usuario.save()
@@ -115,7 +101,7 @@ class UsuarioRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
 
 class UsuarioMeusDadosView(APIView):
     permission_classes = (IsAuthenticated,)
-    
+
     def get(self, request):
         serializer = UsuarioSerializer(request.user)
 
@@ -130,7 +116,7 @@ class UsuarioMeusDadosView(APIView):
             return resposta_sucesso("Dados atualizados com sucesso.", UsuarioMeusDadosSerializer(usuario).data)
 
         return resposta_erro("Erro ao atualizar seus dados.", serializer.errors)
-    
+
 
 class ConfirmarEmailView(APIView):
     authentication_classes = []

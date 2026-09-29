@@ -3,11 +3,7 @@ from grupo_usuario.models import GrupoUsuario
 from usuario.models import Usuario
 from grupo.models import Grupo
 
-# Serializer para o modelo GrupoUsuario
 class GrupoUsuarioSerializer(serializers.ModelSerializer):
-    # Declarados explicitamente: como 'usuario' é a chave primária do model
-    # (ForeignKey com primary_key=True), o ModelSerializer o gera como um
-    # inteiro puro em vez de PrimaryKeyRelatedField, quebrando o create().
     usuario = serializers.PrimaryKeyRelatedField(queryset=Usuario.objects.all())
     grupo = serializers.PrimaryKeyRelatedField(queryset=Grupo.objects.all())
 
@@ -15,7 +11,6 @@ class GrupoUsuarioSerializer(serializers.ModelSerializer):
         model = GrupoUsuario
         fields = '__all__'
 
-    # Validação personalizada para garantir que a associação usuário/grupo seja única
     def validate(self, data):
         usuario = data.get("usuario")
         grupo = data.get("grupo")

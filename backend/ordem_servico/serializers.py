@@ -9,18 +9,17 @@ class OrdemServicoSerializer(serializers.ModelSerializer):
     localizacao_nome = serializers.CharField(source='localizacao.desc_localizacao', read_only=True, default="") 
     solicitante_nome = serializers.CharField(source='solicitante.nome', read_only=True, default="Totem (Anônimo)")
     tecnico_nome = serializers.CharField(source='tecnico.nome', read_only=True, default="Não atribuído")
-    gestor_nome = serializers.CharField(source='gestor.nome', read_only=True, default=None) # <--- NOVA LINHA ADICIONADA AQUI
-    ativo_nome = serializers.SerializerMethodField() # <--- NOVA LINHA ADICIONADA AQUI
-    ativo_patrimonio = serializers.CharField(source='ativo.codigo_patrimonial', read_only=True, default="") # <--- NOVA LINHA ADICIONADA AQUI
-    ativo_ultima_preventiva = serializers.DateField(source='ativo.dt_ultima_preventiva', read_only=True, default=None) # <--- NOVA LINHA ADICIONADA AQUI 
-    ativo_proxima_preventiva = serializers.DateField(source='ativo.dt_proxima_preventiva', read_only=True, default=None) # <--- NOVA LINHA ADICIONADA AQUI
-    
+    gestor_nome = serializers.CharField(source='gestor.nome', read_only=True, default=None)
+    ativo_nome = serializers.SerializerMethodField()
+    ativo_patrimonio = serializers.CharField(source='ativo.codigo_patrimonial', read_only=True, default="")
+    ativo_ultima_preventiva = serializers.DateField(source='ativo.dt_ultima_preventiva', read_only=True, default=None)
+    ativo_proxima_preventiva = serializers.DateField(source='ativo.dt_proxima_preventiva', read_only=True, default=None)
+
     class Meta:
         model = OrdemServico
         fields = '__all__'
         read_only_fields = ['id_ordem_servico', 'solicitante', 'dt_abertura', 'dt_conclusao']
-        
-    # Função que constrói o nome do aparelho
+
     def get_ativo_nome(self, obj):
         if obj.ativo:
             return f"{obj.ativo.marca} {obj.ativo.modelo}"
@@ -63,8 +62,6 @@ class OrdemServicoSerializer(serializers.ModelSerializer):
         return value
 
     def create(self, validated_data):
-        # A abertura (Diretor/Builder + histórico) é responsabilidade da OrdemServicoFacade;
-        # a view chama a fachada direto, e este create só garante o mesmo fluxo se alguém usar serializer.save().
         request = self.context.get('request')
 
         if request and request.user and request.user.is_authenticated:

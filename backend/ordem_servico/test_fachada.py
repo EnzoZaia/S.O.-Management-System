@@ -59,9 +59,6 @@ def _descricoes_historico(ordem_servico):
     return list(Historico.objects.filter(ordem_servico=ordem_servico).values_list("desc_historico", flat=True))
 
 
-# ----------------------------------------------------------------------
-# abrir
-# ----------------------------------------------------------------------
 @pytest.mark.django_db
 def test_abrir_com_usuario_autenticado_monta_corretiva_e_registra_historico_uma_vez():
     localizacao = _criar_localizacao()
@@ -72,7 +69,6 @@ def test_abrir_com_usuario_autenticado_monta_corretiva_e_registra_historico_uma_
         "descricao_servico": "Lâmpada queimada no corredor.",
         "categoria_manutencao": "ELETRICA",
         "prioridade_urgencia": "SIM",
-        # Status/tipo enviados pelo cliente devem ser ignorados: quem decide é o Builder.
         "status_ordem_servico": "CONCLUIDA",
         "tipo_manutencao": "PREVENTIVA",
     })
@@ -118,9 +114,6 @@ def test_abrir_repassa_campos_extra_ao_diretor():
     assert ordem_servico.ativo_id == ativo.pk
 
 
-# ----------------------------------------------------------------------
-# alterar_status
-# ----------------------------------------------------------------------
 @pytest.mark.django_db
 def test_alterar_status_para_concluida_finaliza_e_registra_historico_uma_vez():
     localizacao = _criar_localizacao()
@@ -236,9 +229,6 @@ def test_montar_processador_empilha_log_por_fora_do_historico():
     )
 
 
-# ----------------------------------------------------------------------
-# atribuir_tecnico
-# ----------------------------------------------------------------------
 @pytest.mark.django_db
 def test_atribuir_tecnico_aprova_os_aberta_define_gestor_e_registra_historico():
     localizacao = _criar_localizacao()
@@ -287,9 +277,6 @@ def test_atribuir_usuario_que_nao_e_tecnico_e_rejeitado_sem_alterar_a_os():
     assert _descricoes_historico(ordem_servico) == []
 
 
-# ----------------------------------------------------------------------
-# cancelar
-# ----------------------------------------------------------------------
 @pytest.mark.django_db
 def test_cancelar_marca_cancelada_com_data_e_registra_historico():
     localizacao = _criar_localizacao()
@@ -321,9 +308,6 @@ def test_cancelar_bloqueia_os_em_status_final(status_final):
     assert _descricoes_historico(ordem_servico) == []
 
 
-# ----------------------------------------------------------------------
-# Contrato da API (views -> fachada)
-# ----------------------------------------------------------------------
 @pytest.mark.django_db
 def test_api_patch_status_registra_um_unico_historico():
     """Regressão: a view não pode mais gravar o histórico de status; só o ComHistoricoDecorator grava."""
@@ -356,7 +340,6 @@ def test_api_patch_em_status_final_retorna_400_antes_de_validar_payload(status_f
 
     client = APIClient()
     client.force_authenticate(user=gerente)
-    # Payload inválido de propósito: a mensagem de status final continua tendo precedência.
     resposta = client.patch(f"/ordem-servico/{ordem_servico.pk}/", {"status_ordem_servico": "INEXISTENTE"})
 
     assert resposta.status_code == 400

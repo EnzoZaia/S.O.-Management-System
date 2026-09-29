@@ -53,7 +53,6 @@ def test_dia_util_comum_nao_e_marcado_como_nao_util():
 def test_proximo_dia_util_avanca_cruzando_fim_de_semana_e_feriado():
     calendario = GerenciadorCalendarioFeriados.instancia()
 
-    # Sábado 05/09/2026 -> domingo 06 -> segunda 07 é feriado (Independência) -> terça 08
     sabado = date(2026, 9, 5)
     proximo_util_esperado = date(2026, 9, 8)
 
