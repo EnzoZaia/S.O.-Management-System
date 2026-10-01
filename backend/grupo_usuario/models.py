@@ -8,7 +8,6 @@ class GrupoUsuario(models.Model):
 
     class Meta:
         managed = False
-        #managed = True # Indica que o Django deve criar e gerenciar a tabela no banco de dados
         db_table = 'grupo_usuario'
         unique_together = (('usuario', 'grupo'),)
 

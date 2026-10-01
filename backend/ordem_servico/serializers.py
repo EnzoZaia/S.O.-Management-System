@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from django.utils import timezone
+from ordem_servico.fachada import OrdemServicoFacade
 from ordem_servico.models import OrdemServico
 
 class OrdemServicoSerializer(serializers.ModelSerializer):
@@ -9,18 +9,17 @@ class OrdemServicoSerializer(serializers.ModelSerializer):
     localizacao_nome = serializers.CharField(source='localizacao.desc_localizacao', read_only=True, default="") 
     solicitante_nome = serializers.CharField(source='solicitante.nome', read_only=True, default="Totem (Anônimo)")
     tecnico_nome = serializers.CharField(source='tecnico.nome', read_only=True, default="Não atribuído")
-    gestor_nome = serializers.CharField(source='gestor.nome', read_only=True, default=None) # <--- NOVA LINHA ADICIONADA AQUI
-    ativo_nome = serializers.SerializerMethodField() # <--- NOVA LINHA ADICIONADA AQUI
-    ativo_patrimonio = serializers.CharField(source='ativo.codigo_patrimonial', read_only=True, default="") # <--- NOVA LINHA ADICIONADA AQUI
-    ativo_ultima_preventiva = serializers.DateField(source='ativo.dt_ultima_preventiva', read_only=True, default=None) # <--- NOVA LINHA ADICIONADA AQUI 
-    ativo_proxima_preventiva = serializers.DateField(source='ativo.dt_proxima_preventiva', read_only=True, default=None) # <--- NOVA LINHA ADICIONADA AQUI
-    
+    gestor_nome = serializers.CharField(source='gestor.nome', read_only=True, default=None)
+    ativo_nome = serializers.SerializerMethodField()
+    ativo_patrimonio = serializers.CharField(source='ativo.codigo_patrimonial', read_only=True, default="")
+    ativo_ultima_preventiva = serializers.DateField(source='ativo.dt_ultima_preventiva', read_only=True, default=None)
+    ativo_proxima_preventiva = serializers.DateField(source='ativo.dt_proxima_preventiva', read_only=True, default=None)
+
     class Meta:
         model = OrdemServico
         fields = '__all__'
         read_only_fields = ['id_ordem_servico', 'solicitante', 'dt_abertura', 'dt_conclusao']
-        
-    # Função que constrói o nome do aparelho
+
     def get_ativo_nome(self, obj):
         if obj.ativo:
             return f"{obj.ativo.marca} {obj.ativo.modelo}"
@@ -65,21 +64,12 @@ class OrdemServicoSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         request = self.context.get('request')
 
-        validated_data.pop('status_ordem_servico', None)
-        validated_data.pop('tipo_manutencao', None)
-
         if request and request.user and request.user.is_authenticated:
             usuario_solicitante = request.user
         else:
             usuario_solicitante = None
 
-        return OrdemServico.objects.create(
-            solicitante=usuario_solicitante,
-            tipo_manutencao='CORRETIVA',
-            status_ordem_servico='ABERTA',
-            dt_abertura=timezone.now(),
-            **validated_data
-        )
+        return OrdemServicoFacade().abrir(usuario_solicitante, validated_data)
 
 class AtribuirTecnicoSerializer(serializers.Serializer):
     tecnico = serializers.IntegerField()
