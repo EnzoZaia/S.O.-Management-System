@@ -1,6 +1,5 @@
 from django.contrib import admin
 from historico.models import Historico
-# Register your models here.
 
 class HistoricoAdmin(admin.ModelAdmin):
     list_display = ('id_historico_ordem_servico', 'usuario', 'ordem_servico', 'data_registro')

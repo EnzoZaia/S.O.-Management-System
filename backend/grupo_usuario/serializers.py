@@ -3,24 +3,23 @@ from grupo_usuario.models import GrupoUsuario
 from usuario.models import Usuario
 from grupo.models import Grupo
 
-# Serializer para o modelo GrupoUsuario
 class GrupoUsuarioSerializer(serializers.ModelSerializer):
+    usuario = serializers.PrimaryKeyRelatedField(queryset=Usuario.objects.all())
+    grupo = serializers.PrimaryKeyRelatedField(queryset=Grupo.objects.all())
+
     class Meta:
         model = GrupoUsuario
         fields = '__all__'
-    
-    # Validação personalizada para garantir que o usuário e o grupo existam e que a associação seja única
+
     def validate(self, data):
-        id_usuario = data.get("id_usuario")
-        id_grupo = data.get("id_grupo")
+        usuario = data.get("usuario")
+        grupo = data.get("grupo")
 
-        if not Usuario.objects.filter(id_usuario=id_usuario).exists():
-            raise serializers.ValidationError({"id_usuario": "Usuário informado não existe."})
-
-        if not Grupo.objects.filter(id_grupo=id_grupo).exists():
-            raise serializers.ValidationError({"id_grupo": "Grupo informado não existe."})
-
-        if GrupoUsuario.objects.filter(id_usuario=id_usuario, id_grupo=id_grupo).exists():
-            raise serializers.ValidationError("Este usuário já está vinculado a este grupo.")
+        if usuario is not None and grupo is not None:
+            queryset = GrupoUsuario.objects.filter(usuario=usuario, grupo=grupo)
+            if self.instance is not None:
+                queryset = queryset.exclude(pk=self.instance.pk)
+            if queryset.exists():
+                raise serializers.ValidationError("Este usuário já está vinculado a este grupo.")
 
         return data
