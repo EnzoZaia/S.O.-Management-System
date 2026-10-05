@@ -7,8 +7,7 @@ class AtivoSerializer(serializers.ModelSerializer):
         model = Ativo
         fields = '__all__'
         read_only_fields = ['id_ativo', 'dt_proxima_preventiva']
-    
-    # Sobrescreve o método create para calcular a data da próxima manutenção preventiva com base na data da última manutenção e na periodicidade, garantindo que a data calculada seja um dia útil.
+
     def create(self, validated_data):
         dt_ultima = validated_data.get('dt_ultima_preventiva')
         periodicidade = validated_data.get('periodicidade_preventiva_dias')
@@ -26,8 +25,7 @@ class AtivoSerializer(serializers.ModelSerializer):
             criar_ou_atualizar_os_preventiva_para_ativo(ativo)
 
         return ativo
-    
-    # Sobrescreve o método update para atualizar as informações do ativo, incluindo a data da próxima manutenção preventiva, garantindo que a data calculada seja um dia útil.
+
     def update(self, instance, validated_data):
         instance.periodicidade_preventiva_dias = validated_data.get(
             'periodicidade_preventiva_dias',

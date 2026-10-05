@@ -25,7 +25,7 @@ class IsTecnico(BasePermission):
 class IsSolicitante(BasePermission):
     def has_permission(self, request, view):
         return request.user and usuario_tem_grupo(request.user, "SOLICITANTE")
-    
+
 class IsGerenteOuGestorOuTecnico(BasePermission):
     def has_permission(self, request, view):
         return (request.user and (usuario_tem_grupo(request.user, "GERENTE") or usuario_tem_grupo(request.user, "GESTOR") or usuario_tem_grupo(request.user, "TECNICO")))

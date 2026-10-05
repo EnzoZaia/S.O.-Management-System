@@ -1,15 +1,7 @@
 from datetime import timedelta, date
-import holidays
+from ativo.calendario_feriados import GerenciadorCalendarioFeriados
 from ativo.models import Ativo
-from django.utils import timezone
-
-feriados_br = holidays.Brazil()
-
-def ajustar_para_dia_util(data):
-    while data.weekday() >= 5 or data in feriados_br:
-        data += timedelta(days=1)
-
-    return data
+from ordem_servico.builders import OrdemServicoDiretor
 
 
 def adicionar_meses(data, meses):
@@ -44,55 +36,21 @@ def calcular_proxima_preventiva(dt_ultima_preventiva,periodicidade_dias,localiza
     data_calculada = date(data_calculada.year, data_calculada.month, 1)
 
     if not localizacao:
-        return ajustar_para_dia_util(data_calculada)
+        return GerenciadorCalendarioFeriados.instancia().proximo_dia_util(data_calculada)
 
+    calendario = GerenciadorCalendarioFeriados.instancia()
     predio_atual = localizacao.predio
 
     for i in range(12):
         data_tentativa = adicionar_meses(data_calculada, i)
 
         if predio_ja_tem_preventiva_no_mes(predio_atual,data_tentativa,ativo_atual):
-            return ajustar_para_dia_util(data_tentativa)
+            return calendario.proximo_dia_util(data_tentativa)
 
         if not existe_outro_predio_no_mes(predio_atual,data_tentativa):
-            return ajustar_para_dia_util(data_tentativa)
+            return calendario.proximo_dia_util(data_tentativa)
 
-    return ajustar_para_dia_util(data_calculada)
+    return calendario.proximo_dia_util(data_calculada)
 
 def criar_ou_atualizar_os_preventiva_para_ativo(ativo):
-    from ordem_servico.models import OrdemServico
-
-    if not ativo.dt_proxima_preventiva:
-        return None
-
-    descricao = (
-        f"Manutenção preventiva programada automaticamente para o ativo "
-        f"{ativo.codigo_patrimonial or ativo.id_ativo}, prevista para "
-        f"{ativo.dt_proxima_preventiva.strftime('%d/%m/%Y')}."
-    )
-
-    os_existente = OrdemServico.objects.filter(
-        ativo=ativo,
-        tipo_manutencao='PREVENTIVA',
-        status_ordem_servico__in=['ABERTA', 'APROVADA']
-    ).first()
-
-    if os_existente:
-        os_existente.localizacao = ativo.localizacao
-        os_existente.categoria_manutencao = 'GERAIS'
-        os_existente.prioridade_urgencia = 'NAO'
-        os_existente.descricao_servico = descricao
-        os_existente.save()
-        return os_existente
-
-    return OrdemServico.objects.create(
-        localizacao=ativo.localizacao,
-        ativo=ativo,
-        solicitante=None,
-        tipo_manutencao='PREVENTIVA',
-        categoria_manutencao='GERAIS',
-        prioridade_urgencia='NAO',
-        status_ordem_servico='ABERTA',
-        dt_abertura=timezone.now(),
-        descricao_servico=descricao
-    )
+    return OrdemServicoDiretor().construir_preventiva_automatica(ativo)

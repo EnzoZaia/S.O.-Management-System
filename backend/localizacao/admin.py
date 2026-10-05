@@ -1,6 +1,5 @@
 from django.contrib import admin
 from localizacao.models import Localizacao
-# Register your models here.
 
 class LocalizacaoAdmin(admin.ModelAdmin):
     list_display = ('id_localizacao', 'desc_localizacao', 'predio')
