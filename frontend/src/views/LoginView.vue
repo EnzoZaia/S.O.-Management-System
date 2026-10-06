@@ -51,6 +51,13 @@
                         class="border border-blue-800 text-blue-800 py-3 rounded-lg font-semibold hover:bg-blue-50 cursor-pointer">
                         Abrir Ordem de Serviço
                     </button>
+                    <div class="mt-6 text-center text-sm text-gray-500">
+                        Não possui uma conta?
+                        <button type="button" @click="router.push('/cadastro')"
+                            class="ml-1 font-semibold text-blue-800 hover:text-blue-900 hover:underline transition-colors cursor-pointer">
+                            Cadastre-se
+                        </button>
+                    </div>
                 </form>
             </div>
         </div>
@@ -81,7 +88,7 @@ async function fazerLogin() {
             senha: senha.value
         })
 
-        const dadosUsuario = resposta.data.usuario 
+        const dadosUsuario = resposta.data.usuario
 
         authStore.salvarLogin(resposta.data.access, dadosUsuario)
 

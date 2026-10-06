@@ -11,6 +11,11 @@ const router = createRouter({
       component: ConfirmarEmailView
     },
     {
+      path: '/cadastro',
+      name: 'cadastro',
+      component: () => import('@/views/CadastroView.vue'),
+    },
+    {
       path: '/',
       name: 'login',
       component: LoginView,
