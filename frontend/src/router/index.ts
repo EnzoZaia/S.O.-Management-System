@@ -46,8 +46,9 @@ const router = createRouter({
           path: 'ativos',
           component: () => import('@/views/AtivosView.vue'),
         },
-        { path: 'historico', 
-          component: () => import('@/views/HistoricoView.vue') 
+        {
+          path: 'historico',
+          component: () => import('@/views/HistoricoView.vue')
         },
       ],
     },
@@ -68,8 +69,9 @@ const router = createRouter({
           path: 'ativos',
           component: () => import('@/views/AtivosView.vue'),
         },
-        { path: 'historico', 
-          component: () => import('@/views/HistoricoView.vue') 
+        {
+          path: 'historico',
+          component: () => import('@/views/HistoricoView.vue')
         },
       ],
     },
@@ -86,10 +88,26 @@ const router = createRouter({
           path: 'ativos',
           component: () => import('@/views/AtivosView.vue'),
         },
-        { path: 'historico', 
-          component: () => import('@/views/HistoricoView.vue') 
+        {
+          path: 'historico',
+          component: () => import('@/views/HistoricoView.vue')
         },
       ],
+    },
+    {
+      path: '/dashboard-solicitante',
+      component: () => import('@/views/DashboardSolicitanteView.vue'),
+      redirect: '/dashboard-solicitante/portal',
+      children: [
+        {
+          path: 'portal',
+          component: () => import('@/views/PortalSolicitanteView.vue'),
+        },
+      ],
+    },
+    {
+      path: '/dashboard',
+      redirect: '/dashboard-solicitante/portal',
     },
     {
       path: '/perfil',

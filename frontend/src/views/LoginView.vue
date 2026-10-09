@@ -101,7 +101,7 @@ async function fazerLogin() {
         } else if (dadosUsuario.grupos.includes('TECNICO')) {
             router.push('/dashboard-tecnico/ordens')
         } else {
-            router.push('/dashboard')
+            router.push('/dashboard-solicitante/portal')
         }
 
     } catch (e: any) {

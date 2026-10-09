@@ -1,6 +1,5 @@
 import type { ErrosCadastro, FormularioCadastro } from '@/types/cadastro'
 
-/** Mesmos domínios aceitos pelo backend (DOMINIOS_EMAIL_PERMITIDOS). */
 export const DOMINIOS_EMAIL_PERMITIDOS = ['@gmail.com', '@fho.edu.br'] as const
 export const SENHA_TAMANHO_MINIMO = 8
 

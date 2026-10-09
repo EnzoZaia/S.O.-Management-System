@@ -4,7 +4,6 @@ import { validarEmail, normalizarEmail } from '@/utils/validacaoCadastro'
 
 const INTERVALO_SEGUNDOS = 60
 
-/** Reenvio do e-mail de confirmação com validação, estado de envio e intervalo entre tentativas. */
 export function useReenvioConfirmacao() {
   const enviando = ref(false)
   const sucesso = ref(false)
