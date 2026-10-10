@@ -144,3 +144,8 @@ export function formatarDataHora(iso?: string | null): string {
   const d = new Date(iso)
   return `${d.toLocaleDateString('pt-BR')} às ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
 }
+
+export function podeTerValidacao(os: Pick<OrdemPortal, 'status_ordem_servico' | 'tipo_manutencao'>): boolean {
+  if ((os.tipo_manutencao || 'CORRETIVA').toUpperCase() !== 'CORRETIVA') return false
+  return !['ABERTA', 'APROVADA', 'REPROVADA', 'CANCELADA', 'AGUARDANDO_VALIDACAO'].includes(os.status_ordem_servico)
+}

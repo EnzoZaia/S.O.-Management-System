@@ -49,5 +49,22 @@ export type FiltroStatusPortal = 'TODOS' | 'EM_ANDAMENTO' | 'AGUARDANDO_VOCE' | 
 
 export interface ResultadoValidacao {
   aprovada: boolean
+  
   justificativa?: string
+  
+  evidencias?: File[]
+}
+export interface ValidacaoRegistrada {
+  aprovada: boolean
+  justificativa?: string | null
+  respondido_por_nome?: string
+  dt_resposta: string
+}
+
+export type TipoErroValidacao = 'STATUS_INVALIDO' | 'JA_RESPONDIDA' | 'SEM_PERMISSAO' | 'GENERICO'
+
+export interface ErroValidacao {
+  tipo: TipoErroValidacao
+  mensagem: string
+  validacao?: ValidacaoRegistrada | null
 }
