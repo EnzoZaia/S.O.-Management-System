@@ -40,8 +40,7 @@
     </div>
     <div v-else-if="ordensFiltradas.length === 0" class="bg-white rounded-xl border border-gray-100 p-12 text-center">
       <span class="text-5xl block mb-3 opacity-50">📭</span>
-      <p class="text-gray-500 font-semibold">{{ ordens.length === 0 ? 'Você ainda não tem solicitações.' : 'Nenhuma
-        solicitação com os filtros atuais.' }}</p>
+     <p class="text-gray-500 font-semibold">{{ ordens.length === 0 ? 'Você ainda não tem solicitações.' : 'Nenhuma solicitação encontrada.' }}</p>
     </div>
 
     <div v-else class="grid grid-cols-1 xl:grid-cols-2 gap-4">
