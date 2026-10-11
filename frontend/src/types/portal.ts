@@ -68,3 +68,23 @@ export interface ErroValidacao {
   mensagem: string
   validacao?: ValidacaoRegistrada | null
 }
+
+export interface AvaliacaoRegistrada {
+  nota: number
+  comentario?: string | null
+  avaliado_por_nome?: string
+  dt_avaliacao: string
+}
+
+export interface ResultadoAvaliacao {
+  nota: number
+  comentario?: string
+}
+
+export type TipoErroAvaliacao = 'STATUS_INVALIDO' | 'JA_AVALIADA' | 'SEM_PERMISSAO' | 'GENERICO'
+
+export interface ErroAvaliacao {
+  tipo: TipoErroAvaliacao
+  mensagem: string
+  avaliacao?: AvaliacaoRegistrada | null
+}

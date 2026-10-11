@@ -23,7 +23,9 @@
         @click="router.push('/dashboard-solicitante/portal')"
         :class="[
           'flex items-center gap-4 px-3 py-3 rounded-xl cursor-pointer transition-all duration-200',
-          route.path.includes('portal') ? 'bg-blue-600/50 text-white font-semibold shadow-inner' : 'text-blue-200 hover:bg-blue-800/50 hover:text-white',
+          route.path.includes('portal') || route.path.includes('avaliacao')
+            ? 'bg-blue-600/50 text-white font-semibold shadow-inner'
+            : 'text-blue-200 hover:bg-blue-800/50 hover:text-white',
         ]"
       >
         <span class="text-xl w-8 text-center shrink-0">📋</span>

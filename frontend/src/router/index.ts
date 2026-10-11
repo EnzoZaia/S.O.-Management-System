@@ -103,6 +103,11 @@ const router = createRouter({
           path: 'portal',
           component: () => import('@/views/PortalSolicitanteView.vue'),
         },
+        {
+          path: 'avaliacao/:id',
+          name: 'avaliacao-os',
+          component: () => import('@/views/AvaliacaoOsView.vue'),
+        },
       ],
     },
     {

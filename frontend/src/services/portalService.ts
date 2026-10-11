@@ -1,7 +1,9 @@
 import api from '@/services/api'
 import type {
-  ErroValidacao, EventoHistorico, OrdemPortal, ResultadoValidacao, ValidacaoRegistrada,
+  AvaliacaoRegistrada, ErroAvaliacao, ErroValidacao, EventoHistorico, OrdemPortal,
+  ResultadoAvaliacao, ResultadoValidacao, ValidacaoRegistrada,
 } from '@/types/portal'
+import { normalizarErroAvaliacao } from '@/utils/validacaoAvaliacao'
 import { normalizarErroValidacao } from '@/utils/validacaoOrdem'
 
 export async function listarMinhasOrdens(): Promise<OrdemPortal[]> {
@@ -58,5 +60,35 @@ export async function validarOrdem(id: number, resultado: ResultadoValidacao) {
     return (data?.dados ?? {}) as { status_ordem_servico?: string; validacao?: ValidacaoRegistrada }
   } catch (e) {
     throw new ValidacaoError(normalizarErroValidacao(e))
+  }
+}
+export class AvaliacaoError extends Error {
+  info: ErroAvaliacao
+  constructor(info: ErroAvaliacao) {
+    super(info.mensagem)
+    this.info = info
+  }
+}
+
+/** Retorna a avaliação já registrada para a ordem, ou null se ainda não existe. */
+export async function buscarAvaliacao(id: number): Promise<AvaliacaoRegistrada | null> {
+  try {
+    const { data } = await api.get(`/ordem-servico/${id}/avaliacao/`)
+    return data?.dados || null
+  } catch {
+    return null
+  }
+}
+
+/** CA1: registra a avaliação; o backend encerra a ordem na mesma operação. */
+export async function enviarAvaliacao(id: number, resultado: ResultadoAvaliacao) {
+  try {
+    const { data } = await api.post(`/ordem-servico/${id}/avaliar/`, {
+      nota: resultado.nota,
+      comentario: resultado.comentario,
+    })
+    return (data?.dados ?? {}) as { status_ordem_servico?: string; avaliacao?: AvaliacaoRegistrada }
+  } catch (e) {
+    throw new AvaliacaoError(normalizarErroAvaliacao(e))
   }
 }

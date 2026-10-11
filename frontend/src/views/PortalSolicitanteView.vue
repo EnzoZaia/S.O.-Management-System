@@ -113,6 +113,17 @@
             <p v-if="validacao.justificativa" class="text-xs mt-2 italic">"{{ validacao.justificativa }}"</p>
           </div>
 
+          <div v-if="avaliacao" class="rounded-xl border border-amber-200 bg-amber-50 text-amber-900 p-4"
+            data-testid="avaliacao-portal">
+            <p class="text-[11px] font-black uppercase tracking-wider mb-2">Sua avaliação</p>
+            <EstrelasAvaliacao :model-value="avaliacao.nota" readonly size="sm" />
+            <p v-if="avaliacao.comentario" class="text-xs mt-2 italic">"{{ avaliacao.comentario }}"</p>
+          </div>
+          <div v-else-if="podeAvaliar(selecionada)"
+            class="rounded-xl border border-blue-100 bg-blue-50 text-blue-700 p-4 text-xs font-bold">
+            Ação necessária: avalie o atendimento para encerrar esta ordem.
+          </div>
+
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div class="bg-gray-50 p-4 rounded-xl border border-gray-100">
               <p class="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1">Local</p>
@@ -176,9 +187,9 @@
               <button v-if="acoes.evidencia" @click="emBreve('Envio de evidências')"
                 class="px-4 py-2 text-xs font-bold text-indigo-600 bg-white border border-indigo-200 hover:bg-indigo-50 rounded-lg cursor-pointer">📎
                 Anexar evidência</button>
-              <button v-if="acoes.avaliar" @click="emBreve('Avaliação do atendimento')"
+              <button v-if="acoes.avaliar" @click="irParaAvaliacao(selecionada.id_ordem_servico)"
                 class="px-4 py-2 text-xs font-bold text-amber-600 bg-white border border-amber-200 hover:bg-amber-50 rounded-lg cursor-pointer">⭐
-                Avaliar atendimento</button>
+                {{ avaliacao ? 'Ver minha avaliação' : 'Avaliar atendimento' }}</button>
             </div>
             <button @click="fecharDetalhes"
               class="px-5 py-2 text-sm font-bold text-gray-600 bg-white border border-gray-200 hover:bg-gray-100 rounded-xl cursor-pointer">Fechar</button>
@@ -196,15 +207,16 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import Swal from 'sweetalert2'
 import ValidacaoServicoModal from '@/components/ValidacaoServicoModal.vue'
+import EstrelasAvaliacao from '@/components/EstrelasAvaliacao.vue'
 import {
-  buscarHistoricoOrdem, buscarOrdem, buscarValidacao, listarMinhasOrdens, validarOrdem, ValidacaoError,
+  buscarAvaliacao, buscarHistoricoOrdem, buscarOrdem, buscarValidacao, listarMinhasOrdens, validarOrdem, ValidacaoError,
 } from '@/services/portalService'
 import type {
-  ErroValidacao, EventoHistorico, FiltroStatusPortal, OrdemPortal, ResultadoValidacao, ValidacaoRegistrada,
+  AvaliacaoRegistrada, ErroValidacao, EventoHistorico, FiltroStatusPortal, OrdemPortal, ResultadoValidacao, ValidacaoRegistrada,
 } from '@/types/portal'
 import {
   acoesPermitidas, extrairProblema, formatarData, formatarDataHora, formatarEvento,
-  infoStatus, nomeTecnico, pertenceAoFiltro, podeTerValidacao,
+  infoStatus, nomeTecnico, pertenceAoFiltro, podeAvaliar, podeTerValidacao,
 } from '@/utils/statusOrdem'
 
 const INTERVALO_ATUALIZACAO_MS = 30_000
@@ -224,6 +236,7 @@ const erroHistorico = ref('')
 const enviando = ref(false)
 const validando = ref(false)
 const validacao = ref<ValidacaoRegistrada | null>(null)
+const avaliacao = ref<AvaliacaoRegistrada | null>(null)
 let timer: ReturnType<typeof setInterval> | null = null
 
 const filtros: { valor: FiltroStatusPortal; rotulo: string }[] = [
@@ -265,7 +278,13 @@ async function carregar(manual = false) {
       if (atual) {
         const mudou = atual.status_ordem_servico !== selecionada.value.status_ordem_servico
         selecionada.value = atual
-        if (mudou) await Promise.all([carregarHistorico(atual.id_ordem_servico), carregarValidacao(atual)])
+        if (mudou) {
+          await Promise.all([
+            carregarHistorico(atual.id_ordem_servico),
+            carregarValidacao(atual),
+            carregarAvaliacao(atual),
+          ])
+        }
       }
     }
   } catch (e) {
@@ -294,17 +313,24 @@ async function abrirDetalhes(os: OrdemPortal) {
   selecionada.value = os
   historico.value = []
   validacao.value = null
-  await Promise.all([carregarHistorico(os.id_ordem_servico), carregarValidacao(os)])
+  avaliacao.value = null
+  await Promise.all([carregarHistorico(os.id_ordem_servico), carregarValidacao(os), carregarAvaliacao(os)])
 }
 
 async function carregarValidacao(os: OrdemPortal) {
   validacao.value = podeTerValidacao(os) ? await buscarValidacao(os.id_ordem_servico) : null
 }
 
+// US08: só busca a avaliação quando a ordem já pode ter uma (CONCLUIDA/ENCERRADA).
+async function carregarAvaliacao(os: OrdemPortal) {
+  avaliacao.value = acoesPermitidas(os).avaliar ? await buscarAvaliacao(os.id_ordem_servico) : null
+}
+
 function fecharDetalhes() {
   selecionada.value = null
   historico.value = []
   validacao.value = null
+  avaliacao.value = null
   validando.value = false
 }
 
@@ -368,13 +394,9 @@ async function confirmarValidacao(resultado: ResultadoValidacao) {
   }
 }
 
-// CA1: a avaliação (US08) é obrigatória antes do encerramento. Quando a rota existir, redireciona.
+// US08/CA1: a avaliação é obrigatória antes do encerramento da ordem.
 function irParaAvaliacao(id: number) {
-  if (router.hasRoute('avaliacao-os')) {
-    router.push({ name: 'avaliacao-os', params: { id } })
-    return
-  }
-  Swal.fire({ title: 'Serviço aprovado!', text: 'Falta a avaliação do atendimento para encerrar a ordem. Ela estará disponível em breve.', icon: 'success', confirmButtonColor: '#2563eb' })
+  router.push({ name: 'avaliacao-os', params: { id } })
 }
 
 function emBreve(nome: string) {

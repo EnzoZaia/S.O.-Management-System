@@ -149,3 +149,9 @@ export function podeTerValidacao(os: Pick<OrdemPortal, 'status_ordem_servico' | 
   if ((os.tipo_manutencao || 'CORRETIVA').toUpperCase() !== 'CORRETIVA') return false
   return !['ABERTA', 'APROVADA', 'REPROVADA', 'CANCELADA', 'AGUARDANDO_VALIDACAO'].includes(os.status_ordem_servico)
 }
+
+/** US08: a avaliação é liberada após a aprovação da US07 (ordem CONCLUIDA); ENCERRADA já foi avaliada. */
+export function podeAvaliar(os: Pick<OrdemPortal, 'status_ordem_servico' | 'tipo_manutencao'>): boolean {
+  if ((os.tipo_manutencao || 'CORRETIVA').toUpperCase() !== 'CORRETIVA') return false
+  return os.status_ordem_servico === 'CONCLUIDA'
+}
