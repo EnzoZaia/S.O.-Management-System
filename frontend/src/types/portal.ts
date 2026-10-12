@@ -1,0 +1,90 @@
+
+export type StatusOrdem =
+  | 'ABERTA'
+  | 'APROVADA'
+  | 'REPROVADA'
+  | 'EM_EXECUCAO'
+  | 'AGUARDANDO_MATERIAL'
+  | 'AGUARDANDO_TERCEIRO'
+  | 'AGUARDANDO_VALIDACAO'
+  | 'CONCLUIDA'
+  | 'ENCERRADA'
+  | 'CANCELADA'
+
+export interface OrdemPortal {
+  id_ordem_servico: number
+  status_ordem_servico: StatusOrdem | string
+  tipo_manutencao: string
+  prioridade_urgencia: 'SIM' | 'NAO' | string
+  descricao_servico: string
+  dt_abertura: string
+  dt_conclusao?: string | null
+  predio_nome?: string
+  localizacao_nome?: string
+  tecnico?: number | null
+  tecnico_nome?: string
+  
+  vinculo_presenciei?: boolean
+}
+
+export interface EventoHistorico {
+  id_historico_ordem_servico: number
+  data_registro: string
+  desc_historico: string
+  usuario?: number
+  usuario_nome?: string
+}
+
+export interface InfoStatus {
+  rotulo: string
+  descricao: string
+  icone: string
+  
+  classes: string
+  
+  ponto: string
+}
+
+export type FiltroStatusPortal = 'TODOS' | 'EM_ANDAMENTO' | 'AGUARDANDO_VOCE' | 'FINALIZADAS'
+
+export interface ResultadoValidacao {
+  aprovada: boolean
+  
+  justificativa?: string
+  
+  evidencias?: File[]
+}
+export interface ValidacaoRegistrada {
+  aprovada: boolean
+  justificativa?: string | null
+  respondido_por_nome?: string
+  dt_resposta: string
+}
+
+export type TipoErroValidacao = 'STATUS_INVALIDO' | 'JA_RESPONDIDA' | 'SEM_PERMISSAO' | 'GENERICO'
+
+export interface ErroValidacao {
+  tipo: TipoErroValidacao
+  mensagem: string
+  validacao?: ValidacaoRegistrada | null
+}
+
+export interface AvaliacaoRegistrada {
+  nota: number
+  comentario?: string | null
+  avaliado_por_nome?: string
+  dt_avaliacao: string
+}
+
+export interface ResultadoAvaliacao {
+  nota: number
+  comentario?: string
+}
+
+export type TipoErroAvaliacao = 'STATUS_INVALIDO' | 'JA_AVALIADA' | 'SEM_PERMISSAO' | 'GENERICO'
+
+export interface ErroAvaliacao {
+  tipo: TipoErroAvaliacao
+  mensagem: string
+  avaliacao?: AvaliacaoRegistrada | null
+}

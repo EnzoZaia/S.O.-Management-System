@@ -47,7 +47,7 @@ def test_fabricas_produzem_o_processador_correto():
 
 
 @pytest.mark.django_db
-def test_processador_corretiva_concluida_com_tag_vincula_ativo_e_recalcula_datas():
+def test_processador_corretiva_concluida_com_tag_vincula_ativo_e_aguarda_validacao():
     localizacao = _criar_localizacao()
     ativo = _criar_ativo(localizacao)
     solicitante = Usuario.objects.create(nome="Solicitante", email="sol1@fho.edu.br", senha_hash="x")
@@ -57,7 +57,7 @@ def test_processador_corretiva_concluida_com_tag_vincula_ativo_e_recalcula_datas
         localizacao=localizacao,
         descricao="Ar-condicionado não gela.",
         categoria_manutencao="REFRIGERACAO",
-        prioridade_urgencia="SIM",
+        prioridade_urgencia="URGENTE",
     )
     ordem_servico.status_ordem_servico = "CONCLUIDA"
 
@@ -68,7 +68,8 @@ def test_processador_corretiva_concluida_com_tag_vincula_ativo_e_recalcula_datas
     ordem_servico.refresh_from_db()
     ativo.refresh_from_db()
 
-    assert ordem_servico.dt_conclusao is not None
+    assert ordem_servico.status_ordem_servico == "AGUARDANDO_VALIDACAO"
+    assert ordem_servico.dt_conclusao is None
     assert ordem_servico.ativo_id == ativo.pk
     assert ativo.dt_ultima_preventiva is not None
     assert ativo.dt_proxima_preventiva is not None
@@ -85,7 +86,7 @@ def test_processador_corretiva_concluida_sem_tag_nao_quebra():
         localizacao=localizacao,
         descricao="Torneira vazando.",
         categoria_manutencao="GERAIS",
-        prioridade_urgencia="NAO",
+        prioridade_urgencia="NORMAL",
     )
     ordem_servico.status_ordem_servico = "CONCLUIDA"
 
@@ -94,7 +95,7 @@ def test_processador_corretiva_concluida_sem_tag_nao_quebra():
     ordem_servico.save()
 
     ordem_servico.refresh_from_db()
-    assert ordem_servico.dt_conclusao is not None
+    assert ordem_servico.status_ordem_servico == "AGUARDANDO_VALIDACAO"
     assert ordem_servico.ativo is None
 
 
@@ -112,4 +113,25 @@ def test_processador_preventiva_concluida_e_auto_encerrada():
 
     ordem_servico.refresh_from_db()
     assert ordem_servico.status_ordem_servico == "ENCERRADA"
+    assert ordem_servico.dt_conclusao is not None
+
+
+@pytest.mark.django_db
+def test_processador_corretiva_sem_solicitante_nem_participante_conclui_direto():
+    localizacao = _criar_localizacao()
+
+    ordem_servico = OrdemServicoDiretor().construir_corretiva_do_solicitante(
+        usuario=None,
+        localizacao=localizacao,
+        descricao="Lâmpada queimada na recepção.",
+        categoria_manutencao="ELETRICA",
+        prioridade_urgencia="NORMAL",
+    )
+    ordem_servico.status_ordem_servico = "CONCLUIDA"
+
+    CorretivaFactory().criar_processador().finalizar(ordem_servico, "Lâmpada trocada.")
+    ordem_servico.save()
+
+    ordem_servico.refresh_from_db()
+    assert ordem_servico.status_ordem_servico == "CONCLUIDA"
     assert ordem_servico.dt_conclusao is not None

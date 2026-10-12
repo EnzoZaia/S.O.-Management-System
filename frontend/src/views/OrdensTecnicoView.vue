@@ -26,6 +26,7 @@
             <option value="EM_EXECUCAO">Em Execução</option>
             <option value="AGUARDANDO_MATERIAL">Aguard. Material</option>
             <option value="AGUARDANDO_TERCEIRO">Aguard. Terceiro</option>
+            <option value="AGUARDANDO_VALIDACAO">Aguard. Validação</option>
             <option value="CONCLUIDA">Concluída</option>
             <option value="ENCERRADA">Encerrada</option>
             <option value="CANCELADA">Cancelada</option>
@@ -184,7 +185,7 @@
             <div class="w-full sm:w-auto">
               <p class="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1">Ações de Execução</p>
               <p class="text-xs font-semibold text-gray-600">
-                {{ osSelecionada?.status_ordem_servico === 'APROVADA' ? 'Ordem liberada para início.' : (osSelecionada?.status_ordem_servico === 'EM_EXECUCAO' ? 'Serviço em andamento.' : 'Sem ações pendentes.') }}
+                {{ osSelecionada?.status_ordem_servico === 'APROVADA' ? 'Ordem liberada para início.' : (osSelecionada?.status_ordem_servico === 'EM_EXECUCAO' ? 'Serviço em andamento.' : (osSelecionada?.status_ordem_servico === 'AGUARDANDO_VALIDACAO' ? 'Aguardando a validação do solicitante.' : 'Sem ações pendentes.')) }}
               </p>
             </div>
 

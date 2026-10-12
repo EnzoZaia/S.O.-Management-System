@@ -216,7 +216,7 @@ const chartOptionsDoughnut = {
   responsive: true, maintainAspectRatio: false, cutout: '65%',
   plugins: {
     legend: { position: 'right' as const, labels: { font: { size: 11, family: "'Inter', sans-serif" }, usePointStyle: true, boxWidth: 8 } },
-    tooltip: { backgroundColor: 'rgba(17, 24, 39, 0.9)', padding: 10, cornerRadius: 8, bodyFont: { font: { family: "'Inter', sans-serif" } } }
+    tooltip: { backgroundColor: 'rgba(17, 24, 39, 0.9)', padding: 10, cornerRadius: 8, bodyFont: { family: "'Inter', sans-serif" } }
   }
 }
 

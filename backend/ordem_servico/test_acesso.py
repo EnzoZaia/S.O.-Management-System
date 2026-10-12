@@ -1,8 +1,6 @@
 import pytest
 from django.utils import timezone
 
-from grupo.models import Grupo
-from grupo_usuario.models import GrupoUsuario
 from localizacao.models import Localizacao
 from ordem_servico.acesso import (
     GerenteAcessoFactory,
@@ -14,14 +12,11 @@ from ordem_servico.acesso import (
 from ordem_servico.models import OrdemServico
 from predio.models import Predio
 from usuario.models import Usuario
+from utils.apoio_testes import criar_os, criar_usuario
 
 
 def _criar_usuario_com_grupo(nome, email, nome_grupo):
-    usuario = Usuario.objects.create(nome=nome, email=email, senha_hash="x")
-    if nome_grupo:
-        grupo, _ = Grupo.objects.get_or_create(desc_grupo=nome_grupo)
-        GrupoUsuario.objects.create(usuario=usuario, grupo=grupo)
-    return usuario
+    return criar_usuario(nome, email, nome_grupo)
 
 
 def _criar_localizacao():
@@ -30,15 +25,7 @@ def _criar_localizacao():
 
 
 def _criar_os(localizacao, **campos):
-    valores = {
-        "tipo_manutencao": "CORRETIVA",
-        "prioridade_urgencia": "NAO",
-        "status_ordem_servico": "ABERTA",
-        "dt_abertura": timezone.now(),
-        "descricao_servico": "OS de teste.",
-    }
-    valores.update(campos)
-    return OrdemServico.objects.create(localizacao=localizacao, **valores)
+    return criar_os(localizacao, **campos)
 
 
 @pytest.mark.django_db

@@ -14,17 +14,25 @@ Including another URLconf
     1. Import the include() function: from django.urls import include, path
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
+from django.conf import settings
+from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import path
-from usuario.views import UsuarioListCreateView, UsuarioRetrieveUpdateDestroyView, UsuarioMeusDadosView, ConfirmarEmailView
-from grupo.views import GrupoListCreateView, GrupoRetrieveUpdateDestroyView
-from grupo_usuario.views import GrupoUsuarioListCreateView, GrupoUsuarioRetrieveUpdateDestroyView
+from usuario.views import (
+    UsuarioListCreateView, UsuarioRetrieveUpdateDestroyView, UsuarioMeusDadosView, ConfirmarEmailView,
+    ReenviarConfirmacaoView, UsuarioSituacaoView, UsuarioAuditoriaView,
+)
+from perfil.views import GrupoListView, GrupoDetailView
 from historico.views import HistoricoListView, HistoricoOrdemServicoListView
 from localizacao.views import LocalizacaoListCreateView, LocalizacaoRetrieveUpdateDestroyView
-from ordem_servico.views import OrdemServicoListCreateView, OrdemServicoRetrieveUpdateDestroyView, OrdemServicoAtribuirTecnicoView, DashboardIndicadoresView
+from ordem_servico.views import (
+    OrdemServicoListCreateView, OrdemServicoRetrieveUpdateDestroyView, OrdemServicoAtribuirTecnicoView, DashboardIndicadoresView,
+    OrdemServicoValidarView, OrdemServicoValidacaoView, OrdemServicoAvaliarView, OrdemServicoAvaliacaoView,
+    OrdemServicoVerificarDuplicidadeView, OrdemServicoPresencieiView,
+)
 from predio.views import PredioListCreateView, PredioRetrieveUpdateDestroyView
-from authentication.views import TokenObtainPairView
-from rest_framework_simplejwt.views import TokenRefreshView, TokenVerifyView
+from authentication.views import TokenObtainPairView, TokenRefreshView
+from rest_framework_simplejwt.views import TokenVerifyView
 from ativo.views import AtivoListCreateView, AtivoRetrieveUpdateDestroyView, AtivoHistoricoView
 
 urlpatterns = [
@@ -34,12 +42,12 @@ urlpatterns = [
     path('usuario/', UsuarioListCreateView.as_view(), name='usuario-list-create'),
     path('usuario/<int:pk>/', UsuarioRetrieveUpdateDestroyView.as_view(), name='usuario-detail-view'),
     path('usuario/confirmar-email/<str:token>/', ConfirmarEmailView.as_view(), name='usuario-confirmar-email'),
+    path('usuario/reenviar-confirmacao/', ReenviarConfirmacaoView.as_view(), name='usuario-reenviar-confirmacao'),
+    path('usuario/<int:pk>/situacao/', UsuarioSituacaoView.as_view(), name='usuario-situacao'),
+    path('usuario/<int:pk>/auditoria/', UsuarioAuditoriaView.as_view(), name='usuario-auditoria'),
 
-    path('grupo/', GrupoListCreateView.as_view(), name='grupo-list-create'),
-    path('grupo/<int:pk>/', GrupoRetrieveUpdateDestroyView.as_view(), name='grupo-detail-view'),
-
-    path('grupo-usuario/', GrupoUsuarioListCreateView.as_view(), name='grupo-usuario-list-create'),
-    path('grupo-usuario/<int:pk>/', GrupoUsuarioRetrieveUpdateDestroyView.as_view(), name='grupo-usuario-detail-view'),
+    path('grupo/', GrupoListView.as_view(), name='grupo-list'),
+    path('grupo/<int:pk>/', GrupoDetailView.as_view(), name='grupo-detail-view'),
 
     path('historico/', HistoricoListView.as_view(), name='historico-list'),
     path('ordem-servico/<int:pk>/historico/', HistoricoOrdemServicoListView.as_view(), name='historico-ordem-servico'),
@@ -50,6 +58,12 @@ urlpatterns = [
     path('ordem-servico/', OrdemServicoListCreateView.as_view(), name='ordem-servico-list-create'),
     path('ordem-servico/<int:pk>/', OrdemServicoRetrieveUpdateDestroyView.as_view(), name='ordem-servico-detail-view'),
     path('ordem-servico/<int:pk>/atribuir-tecnico/', OrdemServicoAtribuirTecnicoView.as_view(), name='ordem-servico-atribuir-tecnico'),
+    path('ordem-servico/verificar-duplicidade/', OrdemServicoVerificarDuplicidadeView.as_view(), name='ordem-servico-verificar-duplicidade'),
+    path('ordem-servico/<int:pk>/presenciei/', OrdemServicoPresencieiView.as_view(), name='ordem-servico-presenciei'),
+    path('ordem-servico/<int:pk>/validar/', OrdemServicoValidarView.as_view(), name='ordem-servico-validar'),
+    path('ordem-servico/<int:pk>/validacao/', OrdemServicoValidacaoView.as_view(), name='ordem-servico-validacao'),
+    path('ordem-servico/<int:pk>/avaliar/', OrdemServicoAvaliarView.as_view(), name='ordem-servico-avaliar'),
+    path('ordem-servico/<int:pk>/avaliacao/', OrdemServicoAvaliacaoView.as_view(), name='ordem-servico-avaliacao'),
     path('ordem-servico/dashboard/indicadores/', DashboardIndicadoresView.as_view(), name='dashboard-indicadores'),
 
     path('predio/', PredioListCreateView.as_view(), name='predio-list-create'),
@@ -64,3 +78,5 @@ urlpatterns = [
 
     path('ativo/<int:pk>/historico/', AtivoHistoricoView.as_view(), name='ativo-historico'),
 ]
+
+urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

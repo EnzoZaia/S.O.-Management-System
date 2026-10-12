@@ -3,12 +3,11 @@ import pytest
 from rest_framework.test import APIClient
 
 from ativo.models import Ativo
-from grupo.models import Grupo
-from grupo_usuario.models import GrupoUsuario
 from localizacao.models import Localizacao
 from ordem_servico.models import OrdemServico
 from predio.models import Predio
 from usuario.models import Usuario
+from utils.apoio_testes import criar_os, criar_usuario
 
 
 @pytest.mark.django_db
@@ -27,19 +26,12 @@ def test_concluir_os_com_tag_patrimonio_nao_estoura_nameerror():
         periodicidade_preventiva_dias=90,
     )
 
-    grupo_tecnico = Grupo.objects.create(desc_grupo="TECNICO")
-    tecnico = Usuario.objects.create(
-        nome="Tecnico", email="tecnico@fho.edu.br", senha_hash="x", email_confirmado=True
-    )
-    GrupoUsuario.objects.create(usuario=tecnico, grupo=grupo_tecnico)
+    tecnico = criar_usuario("Tecnico", "tecnico@fho.edu.br", "TECNICO")
 
-    ordem_servico = OrdemServico.objects.create(
-        localizacao=localizacao,
+    ordem_servico = criar_os(
+        localizacao,
         tecnico=tecnico,
-        tipo_manutencao="CORRETIVA",
-        prioridade_urgencia="NAO",
         status_ordem_servico="APROVADA",
-        dt_abertura=timezone.now(),
         descricao_servico="Ar-condicionado não liga.",
     )
 
@@ -85,6 +77,8 @@ def test_abrir_os_corretiva_pelo_totem_anonimo_usa_diretor():
 
     ordem_servico = OrdemServico.objects.get(pk=resposta.data["dados"]["id_ordem_servico"])
     assert ordem_servico.tipo_manutencao == "CORRETIVA"
-    assert ordem_servico.status_ordem_servico == "ABERTA"
+    assert ordem_servico.status_ordem_servico == "EM_TRIAGEM"
+    assert resposta.data["dados"]["status_ordem_servico"] == "ABERTA"
+    assert resposta.data["dados"]["prioridade_urgencia"] == "NAO"
     assert ordem_servico.solicitante is None
     assert ordem_servico.dt_abertura is not None

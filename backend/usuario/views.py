@@ -1,55 +1,86 @@
-from rest_framework import generics
-from usuario.models import Usuario
-from rest_framework import status
-from usuario.serializers import UsuarioSerializer, UsuarioMeusDadosSerializer
-from utils.responses import resposta_sucesso, resposta_erro
-from rest_framework.permissions import IsAuthenticated
-from utils.permissions import IsGerente
-from rest_framework.views import APIView
-from grupo.models import Grupo
-from grupo_usuario.models import GrupoUsuario
-from django.contrib.auth.hashers import make_password
-
-from django.core.mail import send_mail
-from django.utils import timezone
-
 from django.conf import settings
+from django.contrib.auth.hashers import make_password
+from django.db import transaction
+from django.shortcuts import get_object_or_404
+from rest_framework import generics
+from rest_framework import status
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.throttling import ScopedRateThrottle
+from rest_framework.views import APIView
+
+from auditoria_usuario.models import AuditoriaUsuario
+from auditoria_usuario.serializers import AuditoriaUsuarioSerializer
+from perfil import services as perfis
+from usuario import services
+from usuario.models import STATUS_CONTA_DESATIVADA, Usuario
+from usuario.serializers import (
+    AlterarSituacaoSerializer,
+    ReenviarConfirmacaoSerializer,
+    UsuarioMeusDadosSerializer,
+    UsuarioSerializer,
+)
+from utils.permissions import IsGerente, usuario_tem_grupo
+from utils.responses import resposta_sucesso, resposta_erro
+
+
+def _usuarios_com_grupo():
+    return Usuario.objects.select_related('perfil_gerente', 'perfil_gestor', 'perfil_tecnico', 'perfil_solicitante')
+
+
+def _filtro_ativo(valor):
+    if valor is None or valor == '':
+        return True
+    valor = str(valor).strip().lower()
+    if valor in ('todos', 'all'):
+        return None
+    return valor in ('true', '1', 'sim')
+
 
 class UsuarioListCreateView(generics.ListCreateAPIView):
-    queryset = Usuario.objects.exclude(nome__icontains='[DESATIVADO]').order_by('nome')
     serializer_class = UsuarioSerializer
-    permission_classes = (IsAuthenticated, IsGerente)
+    throttle_scope = 'cadastro_publico'
 
-    def create(self, request, *args, **kwargs):    
-        Usuario.objects.filter(email_confirmado=False, dt_expiracao_token__lt=timezone.now()).delete()
+    def get_permissions(self):
+        if self.request.method == 'POST':
+            return [AllowAny()]
+        return [IsAuthenticated(), IsGerente()]
 
+    def get_throttles(self):
+        if self.request.method == 'POST' and not self._pelo_gerente():
+            return [ScopedRateThrottle()]
+        return []
+
+    def _pelo_gerente(self) -> bool:
+        usuario = self.request.user
+        return bool(usuario and usuario.is_authenticated and usuario_tem_grupo(usuario, "GERENTE"))
+
+    def get_queryset(self):
+        queryset = _usuarios_com_grupo().order_by('nome')
+        ativo = _filtro_ativo(self.request.query_params.get('ativo'))
+        if ativo is not None:
+            queryset = queryset.exclude(status_conta=STATUS_CONTA_DESATIVADA) if ativo else queryset.filter(status_conta=STATUS_CONTA_DESATIVADA)
+        return queryset
+
+    def get_serializer_context(self):
+        contexto = super().get_serializer_context()
+        contexto['pelo_gerente'] = self._pelo_gerente()
+        return contexto
+
+    def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
 
-        if serializer.is_valid():
-            usuario = serializer.save()
+        if not serializer.is_valid():
+            return resposta_erro("Erro ao cadastrar usuário.", serializer.errors)
 
-            link_confirmacao = f"http://localhost:5173/confirmar-email/{usuario.token_confirmacao_email}"
+        usuario = serializer.save()
+        email_enviado = services.enviar_email_confirmacao(usuario, senha_inicial=usuario.senha_temporaria)
 
-            send_mail(
-                subject="Confirmação de cadastro - TechOrder",
-                message=(
-                    f"Olá, {usuario.nome}!\n\n"
-                    f"Seu cadastro no sistema TechOrder foi criado com sucesso.\n\n"
-                    f"Confirme seu e-mail acessando o link abaixo:\n"
-                    f"{link_confirmacao}\n\n"
-                    f"Após confirmar, você poderá acessar o sistema com:\n"
-                    f"E-mail: {usuario.email}\n"
-                    f"Senha: {usuario.senha_temporaria}\n\n"
-                    f"Este link expira em 24 horas."
-                ),
-                from_email=None,
-                recipient_list=[usuario.email],
-                fail_silently=False,
-            )
+        if email_enviado:
+            mensagem = "Cadastro realizado. Enviamos um link de confirmação para o seu e-mail."
+        else:
+            mensagem = "Cadastro realizado, mas não foi possível enviar o e-mail de confirmação agora. Use a opção de reenviar."
 
-            return resposta_sucesso("Usuário cadastrado com sucesso. E-mail de confirmação enviado.", UsuarioSerializer(usuario).data, status.HTTP_201_CREATED)
-
-        return resposta_erro("Erro ao cadastrar usuário.", serializer.errors)
+        return resposta_sucesso(mensagem, UsuarioSerializer(usuario).data, status.HTTP_201_CREATED)
 
 class UsuarioRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Usuario.objects.all()
@@ -57,6 +88,9 @@ class UsuarioRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = (IsAuthenticated, IsGerente)
 
     http_method_names = ['get', 'delete', 'put', 'patch']
+
+    def get_queryset(self):
+        return _usuarios_com_grupo()
 
     def retrieve(self, request, *args, **kwargs):
         usuario = self.get_object()
@@ -68,36 +102,89 @@ class UsuarioRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
         usuario = self.get_object()
 
         novo_email = request.data.get('email')
-        if novo_email and Usuario.objects.exclude(id_usuario=usuario.id_usuario).filter(email=novo_email).exists():
-            return resposta_erro("Erro ao atualizar usuário.", {"email": ["Já existe um usuário com este e-mail."]})
-
-        usuario.nome = request.data.get('nome', usuario.nome)
-        usuario.email = request.data.get('email', usuario.email)
-
-        nova_senha = request.data.get('senha')
-        if nova_senha:
-            usuario.senha_hash = make_password(nova_senha)
-
-        usuario.save()
+        if novo_email:
+            novo_email = str(novo_email).strip().lower()
+            if Usuario.objects.exclude(id_usuario=usuario.id_usuario).filter(email=novo_email).exists():
+                return resposta_erro("Erro ao atualizar usuário.", {"email": ["Já existe um usuário com este e-mail."]})
 
         id_grupo = request.data.get('grupo')
-        if id_grupo:
+        novo_perfil = None
+        if id_grupo not in (None, ''):
             try:
-                grupo_obj = Grupo.objects.get(pk=id_grupo)
-                GrupoUsuario.objects.update_or_create(usuario=usuario, defaults={'grupo': grupo_obj})
-            except Grupo.DoesNotExist:
+                novo_perfil = perfis.PERFIL_POR_ID.get(int(id_grupo))
+            except (TypeError, ValueError):
+                novo_perfil = None
+            if novo_perfil is None:
                 return resposta_erro("Erro ao atualizar usuário.", {"grupo": ["Grupo informado não existe."]})
 
+        try:
+            with transaction.atomic():
+                usuario.nome = request.data.get('nome', usuario.nome)
+                usuario.email = novo_email or usuario.email
+
+                nova_senha = request.data.get('senha')
+                if nova_senha:
+                    usuario.senha_hash = make_password(nova_senha)
+
+                usuario.save()
+
+                if novo_perfil is not None:
+                    services.alterar_perfil(usuario, novo_perfil, request.user)
+        except services.RegraUsuarioError as erro:
+            return resposta_erro(erro.mensagem, erro.erros, erro.status_code)
+
+        usuario = _usuarios_com_grupo().get(pk=usuario.pk)
         return resposta_sucesso("Usuário atualizado com sucesso.", UsuarioSerializer(usuario).data)
 
     def destroy(self, request, *args, **kwargs):
         usuario = self.get_object()
 
-        usuario.nome = f"[DESATIVADO] {usuario.nome}"
-        usuario.email = f"desativado_{usuario.id_usuario}_{usuario.email}"
-        usuario.save()
+        try:
+            services.alterar_situacao(usuario, False, request.user)
+        except services.RegraUsuarioError as erro:
+            return resposta_erro(erro.mensagem, erro.erros, erro.status_code)
 
-        return resposta_sucesso("Usuário removido com sucesso.", None, status.HTTP_200_OK)
+        return resposta_sucesso("Usuário desativado com sucesso.", None, status.HTTP_200_OK)
+
+
+class UsuarioSituacaoView(APIView):
+    permission_classes = (IsAuthenticated, IsGerente)
+
+    def patch(self, request, pk):
+        usuario = get_object_or_404(Usuario, pk=pk)
+
+        serializer = AlterarSituacaoSerializer(data=request.data)
+        if not serializer.is_valid():
+            return resposta_erro("Erro ao alterar a situação do usuário.", serializer.errors)
+
+        ativo = serializer.validated_data['ativo']
+
+        try:
+            alterado = services.alterar_situacao(usuario, ativo, request.user)
+        except services.RegraUsuarioError as erro:
+            return resposta_erro(erro.mensagem, erro.erros, erro.status_code)
+
+        if not alterado:
+            mensagem = "O usuário já estava nesta situação."
+        else:
+            mensagem = "Usuário ativado com sucesso." if ativo else "Usuário desativado com sucesso."
+
+        usuario = _usuarios_com_grupo().get(pk=usuario.pk)
+        return resposta_sucesso(mensagem, UsuarioSerializer(usuario).data)
+
+
+class UsuarioAuditoriaView(APIView):
+    permission_classes = (IsAuthenticated, IsGerente)
+
+    def get(self, request, pk):
+        usuario = get_object_or_404(Usuario, pk=pk)
+        registros = (
+            AuditoriaUsuario.objects.filter(usuario_alvo=usuario)
+            .select_related('autor', 'usuario_alvo')
+            .order_by('-dt_registro', '-id_auditoria')
+        )
+        return resposta_sucesso("Auditoria carregada com sucesso.", AuditoriaUsuarioSerializer(registros, many=True).data)
+
 
 class UsuarioMeusDadosView(APIView):
     permission_classes = (IsAuthenticated,)
@@ -124,16 +211,29 @@ class ConfirmarEmailView(APIView):
 
     def get(self, request, token):
         try:
-            usuario = Usuario.objects.get(token_confirmacao_email=token)
-        except Usuario.DoesNotExist:
-            return resposta_erro("Token de confirmação inválido.", None, status.HTTP_400_BAD_REQUEST)
+            usuario = services.confirmar_email(token)
+        except services.RegraUsuarioError as erro:
+            return resposta_erro(erro.mensagem, None, erro.status_code)
 
-        if usuario.dt_expiracao_token and usuario.dt_expiracao_token < timezone.now():
-            return resposta_erro("Token de confirmação expirado.", None, status.HTTP_400_BAD_REQUEST)
+        return resposta_sucesso("E-mail confirmado com sucesso. Agora você já pode acessar o sistema.", {"ra": usuario.ra})
 
-        usuario.email_confirmado = True
-        usuario.token_confirmacao_email = None
-        usuario.dt_expiracao_token = None
-        usuario.save()
 
-        return resposta_sucesso("E-mail confirmado com sucesso. Agora o usuário pode acessar o sistema.", None)
+class ReenviarConfirmacaoView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    throttle_scope = 'reenvio_confirmacao'
+
+    throttle_classes = [ScopedRateThrottle]
+
+    def post(self, request):
+        serializer = ReenviarConfirmacaoSerializer(data=request.data)
+        if not serializer.is_valid():
+            return resposta_erro("Informe um e-mail válido.", serializer.errors)
+
+        services.reenviar_confirmacao(serializer.validated_data['email'])
+
+        return resposta_sucesso(
+            "Se houver um cadastro pendente para este e-mail, enviamos um novo link de confirmação "
+            f"(válido por {settings.HORAS_VALIDADE_TOKEN_CONFIRMACAO} horas).",
+            None,
+        )

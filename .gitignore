@@ -9,3 +9,4 @@ db.sqlite3
 tech_
 tech_order.session.sql
 backend_pi.session.sql
+backend/media/

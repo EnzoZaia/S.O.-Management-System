@@ -23,6 +23,7 @@
           <option value="EM_EXECUCAO">Em Execução</option>
           <option value="AGUARDANDO_MATERIAL">Aguard. Material</option>
           <option value="AGUARDANDO_TERCEIRO">Aguard. Terceiro</option>
+          <option value="AGUARDANDO_VALIDACAO">Aguard. Validação</option>
           <option value="CONCLUIDA">Concluída</option>
           <option value="ENCERRADA">Encerrada</option>
           <option value="CANCELADA">Cancelada</option>
