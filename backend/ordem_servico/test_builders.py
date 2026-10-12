@@ -39,19 +39,19 @@ def test_corretiva_e_preventiva_nascem_com_mesmos_defaults_estruturais():
         localizacao=localizacao,
         descricao="Ar-condicionado não liga.",
         categoria_manutencao="REFRIGERACAO",
-        prioridade_urgencia="SIM",
+        prioridade_urgencia="URGENTE",
     )
     preventiva = diretor.construir_preventiva_automatica(ativo)
 
     for ordem_servico in (corretiva, preventiva):
-        assert ordem_servico.status_ordem_servico == "ABERTA"
+        assert ordem_servico.status_ordem_servico == "EM_TRIAGEM"
         assert ordem_servico.dt_abertura is not None
         assert ordem_servico.pk is not None
 
     assert corretiva.tipo_manutencao == "CORRETIVA"
     assert preventiva.tipo_manutencao == "PREVENTIVA"
     assert preventiva.categoria_manutencao == "GERAIS"
-    assert preventiva.prioridade_urgencia == "NAO"
+    assert preventiva.prioridade_urgencia == "NORMAL"
 
 
 @pytest.mark.django_db
@@ -95,7 +95,7 @@ def test_construir_corretiva_do_solicitante_aplica_campos_extra():
         localizacao=localizacao,
         descricao="Bebedouro vazando.",
         categoria_manutencao="GERAIS",
-        prioridade_urgencia="NAO",
+        prioridade_urgencia="NORMAL",
         ativo=ativo,
     )
 

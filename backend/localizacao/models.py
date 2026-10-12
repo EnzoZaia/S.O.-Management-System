@@ -3,7 +3,7 @@ from predio.models import Predio
 
 
 class Localizacao(models.Model):
-    id_localizacao = models.BigAutoField(
+    id_localizacao = models.AutoField(
         primary_key=True,
         db_column="id",
     )

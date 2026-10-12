@@ -8,3 +8,7 @@ def resposta_sucesso(mensagem, dados=None, status_code=status.HTTP_200_OK):
 
 def resposta_erro(mensagem, erros=None, status_code=status.HTTP_400_BAD_REQUEST):
     return Response({"status": "erro", "mensagem": mensagem, "erros": erros}, status=status_code)
+
+
+def resposta_conflito(mensagem, dados=None):
+    return Response({"status": "erro", "mensagem": mensagem, "dados": dados}, status=status.HTTP_409_CONFLICT)

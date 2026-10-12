@@ -1,5 +1,6 @@
 from dotenv import load_dotenv
 import os
+import sys
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -31,14 +32,16 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
 
     'usuario',
-    'grupo',
-    'grupo_usuario',
+    'perfil',
     'predio',
     'localizacao',
     'ordem_servico',
     'historico',
     'authentication',
     'ativo',
+    'os_participante',
+    'validacao',
+    'auditoria_usuario',
 ]
 
 MIDDLEWARE = [
@@ -73,7 +76,9 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'config.wsgi.application'
 
-if os.getenv('DB_NAME'):
+EXECUTANDO_TESTES = 'pytest' in sys.modules or (len(sys.argv) > 1 and sys.argv[1] == 'test')
+
+if os.getenv('DB_NAME') and not EXECUTANDO_TESTES:
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
@@ -82,6 +87,7 @@ if os.getenv('DB_NAME'):
             'PASSWORD': os.getenv('DB_PASSWORD'),
             'HOST': os.getenv('DB_HOST'),
             'PORT': os.getenv('DB_PORT'),
+            'DISABLE_SERVER_SIDE_CURSORS': True,
             'OPTIONS': {
                 'sslmode': 'require',
             },
@@ -95,7 +101,7 @@ else:
         }
     }
 
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
 EMAIL_HOST = os.getenv('EMAIL_HOST')
 EMAIL_PORT = int(os.getenv('EMAIL_PORT', 587))
 EMAIL_USE_TLS = True
@@ -103,6 +109,10 @@ EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 BASE_URL = os.getenv('BASE_URL')
+
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5173').rstrip('/')
+
+HORAS_VALIDADE_TOKEN_CONFIRMACAO = int(os.getenv('HORAS_VALIDADE_TOKEN_CONFIRMACAO', 24))
 
 DOMINIOS_EMAIL_PERMITIDOS = tuple(
     dominio.strip().lower()
@@ -127,6 +137,9 @@ USE_TZ = True
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
+MEDIA_URL = 'media/'
+MEDIA_ROOT = Path(os.getenv('MEDIA_ROOT', BASE_DIR / 'media'))
+
 from datetime import timedelta
 
 SIMPLE_JWT = {
@@ -145,4 +158,8 @@ REST_FRAMEWORK = {
         'rest_framework.parsers.FormParser',
         'rest_framework.parsers.MultiPartParser',
     ],
+    'DEFAULT_THROTTLE_RATES': {
+        'reenvio_confirmacao': os.getenv('THROTTLE_REENVIO_CONFIRMACAO', '5/hour'),
+        'cadastro_publico': os.getenv('THROTTLE_CADASTRO_PUBLICO', '20/hour'),
+    },
 }

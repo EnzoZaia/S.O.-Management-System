@@ -1,4 +1,3 @@
-import django.db.models.deletion
 from django.db import migrations, models
 
 
@@ -7,20 +6,18 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ('predio', '0001_initial'),
     ]
 
     operations = [
         migrations.CreateModel(
             name='Localizacao',
             fields=[
-                ('id_localizacao', models.BigAutoField(primary_key=True, serialize=False)),
-                ('desc_localizacao', models.CharField(max_length=150)),
-                ('predio', models.ForeignKey(db_column='id_predio', on_delete=django.db.models.deletion.DO_NOTHING, to='predio.predio')),
+                ('id_localizacao', models.AutoField(db_column='id', primary_key=True, serialize=False)),
+                ('desc_localizacao', models.CharField(db_column='nome', max_length=100)),
             ],
             options={
                 'db_table': 'localizacao',
-                'managed': True,
+                'managed': False,
             },
         ),
     ]

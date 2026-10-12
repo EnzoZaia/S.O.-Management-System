@@ -2,34 +2,54 @@ from rest_framework import serializers
 from django.contrib.auth.hashers import make_password
 from django.db import transaction
 
-import uuid
-from datetime import timedelta
-from django.utils import timezone
 from django.conf import settings
 
-from usuario.models import Usuario
-from grupo.models import Grupo
-from grupo_usuario.models import GrupoUsuario
+from perfil import services as perfis
+from usuario.models import STATUS_CONTA_PENDENTE, Usuario
+from usuario.services import novo_token_confirmacao
+
+SENHA_TAMANHO_MINIMO = 8
+
 
 class UsuarioSerializer(serializers.ModelSerializer):
-    senha = serializers.CharField(write_only=True)
-    grupo = serializers.IntegerField(write_only=True)
+    senha = serializers.CharField(write_only=True, error_messages={'required': "A senha é obrigatória.", 'blank': "A senha é obrigatória."})
+    grupo = serializers.IntegerField(write_only=True, required=False)
     grupo_descricao = serializers.SerializerMethodField(read_only=True)
+    id_grupo = serializers.SerializerMethodField(read_only=True)
+    grupos = serializers.SerializerMethodField(read_only=True)
+    ra = serializers.CharField(read_only=True, default=None)
+    ativo = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = Usuario
-        fields = ['id_usuario', 'nome', 'email', 'senha', 'grupo', 'grupo_descricao']
-        read_only_fields = ['id_usuario', 'grupo_descricao']
+        fields = ['id_usuario', 'nome', 'email', 'senha', 'grupo', 'id_grupo', 'grupo_descricao', 'grupos', 'ra', 'ativo', 'status_conta', 'email_confirmado']
+        read_only_fields = ['id_usuario', 'grupo_descricao', 'id_grupo', 'grupos', 'ra', 'ativo', 'status_conta', 'email_confirmado']
+        extra_kwargs = {
+            'nome': {'error_messages': {'required': "O nome é obrigatório.", 'blank': "O nome é obrigatório."}},
+            'email': {'validators': [], 'error_messages': {'required': "O e-mail é obrigatório.", 'blank': "O e-mail é obrigatório."}},
+        }
+
+    @property
+    def _pelo_gerente(self) -> bool:
+        return bool(self.context.get('pelo_gerente'))
 
     def get_grupo_descricao(self, obj):
-        vinculo = GrupoUsuario.objects.filter(usuario=obj).select_related('grupo').first()
-        if vinculo:
-            return vinculo.grupo.desc_grupo
-        return None
+        return perfis.perfil_principal(obj)
+
+    def get_id_grupo(self, obj):
+        return perfis.ID_POR_PERFIL.get(perfis.perfil_principal(obj))
+
+    def get_grupos(self, obj):
+        return perfis.perfis_do_usuario(obj)
 
     def validate_nome(self, value):
         if not value.strip():
             raise serializers.ValidationError("O nome é obrigatório.")
+        return value.strip()
+
+    def validate_senha(self, value):
+        if len(value) < SENHA_TAMANHO_MINIMO:
+            raise serializers.ValidationError(f"A senha deve ter pelo menos {SENHA_TAMANHO_MINIMO} caracteres.")
         return value
 
     def validate_email(self, value):
@@ -39,52 +59,48 @@ class UsuarioSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(f"O e-mail deve terminar com um dos domínios permitidos: {', '.join(settings.DOMINIOS_EMAIL_PERMITIDOS)}.")
         usuario_existente = Usuario.objects.filter(email=email).first()
 
-        if usuario_existente and usuario_existente.email_confirmado:
-            raise serializers.ValidationError("Já existe um usuário ativo com este e-mail.")
+        if usuario_existente is None:
+            return email
+
+        if usuario_existente.email_confirmado:
+            raise serializers.ValidationError("Já existe um usuário cadastrado com este e-mail.")
+
+        if not self._pelo_gerente:
+            raise serializers.ValidationError("Já existe um cadastro pendente para este e-mail. Use a opção de reenviar o e-mail de confirmação.")
 
         return email
+
+    def validate(self, dados):
+        if self._pelo_gerente:
+            id_grupo = dados.get('grupo')
+            if id_grupo is None:
+                raise serializers.ValidationError({'grupo': ["Informe o cargo (grupo) do usuário."]})
+            if id_grupo not in perfis.PERFIL_POR_ID:
+                raise serializers.ValidationError({'grupo': ["Grupo informado não existe."]})
+        else:
+            dados.pop('grupo', None)
+        return dados
 
     @transaction.atomic
     def create(self, validated_data):
         senha = validated_data.pop('senha')
-        id_grupo = validated_data.pop('grupo')
+        id_grupo = validated_data.pop('grupo', None)
 
-        grupo = Grupo.objects.get(id_grupo=id_grupo)
         email = validated_data['email']
-        token = str(uuid.uuid4())
+        usuario = Usuario.objects.filter(email=email, email_confirmado=False).first() if self._pelo_gerente else None
 
-        usuario_existente = Usuario.objects.filter(email=email).first()
+        if usuario is None:
+            usuario = Usuario(email=email, email_confirmado=False, status_conta=STATUS_CONTA_PENDENTE)
 
-        if usuario_existente and not usuario_existente.email_confirmado:
-            usuario = usuario_existente
-        else:
-            usuario = None
+        usuario.nome = validated_data['nome']
+        usuario.senha_hash = make_password(senha)
+        novo_token_confirmacao(usuario)
+        usuario.save()
 
-        if usuario:
-            usuario.nome = validated_data['nome']
-            usuario.senha_hash = make_password(senha)
-            usuario.token_confirmacao_email = token
-            usuario.dt_expiracao_token = timezone.now() + timedelta(hours=24)
-            usuario.save()
+        if self._pelo_gerente:
+            perfis.definir_perfil(usuario, perfis.PERFIL_POR_ID[id_grupo])
 
-            GrupoUsuario.objects.update_or_create(
-                usuario=usuario,
-                defaults={'grupo': grupo}
-            )
-
-        else:
-            usuario = Usuario.objects.create(
-            nome=validated_data['nome'],
-            email=email,
-            senha_hash=make_password(senha),
-            email_confirmado=False,
-            token_confirmacao_email=token,
-            dt_expiracao_token=timezone.now() + timedelta(hours=24)
-        )
-
-        GrupoUsuario.objects.create(usuario=usuario, grupo=grupo)
-
-        usuario.senha_temporaria = senha
+        usuario.senha_temporaria = senha if self._pelo_gerente else None
         return usuario
 
 class UsuarioMeusDadosSerializer(serializers.ModelSerializer):
@@ -123,3 +139,16 @@ class UsuarioMeusDadosSerializer(serializers.ModelSerializer):
 
         instance.save()
         return instance
+
+
+class AlterarSituacaoSerializer(serializers.Serializer):
+    ativo = serializers.BooleanField()
+
+    def validate(self, dados):
+        if 'ativo' not in self.initial_data:
+            raise serializers.ValidationError({'ativo': ["Informe a situação (true para ativo, false para inativo)."]})
+        return dados
+
+
+class ReenviarConfirmacaoSerializer(serializers.Serializer):
+    email = serializers.EmailField(error_messages={'required': "O e-mail é obrigatório.", 'blank': "O e-mail é obrigatório.", 'invalid': "Informe um e-mail válido."})

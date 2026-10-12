@@ -1,8 +1,8 @@
 from django.db import models
 
 class Predio(models.Model):
-    id_predio = models.BigAutoField(primary_key=True)
-    nome_predio = models.CharField(max_length=100)
+    id_predio = models.AutoField(primary_key=True, db_column='id')
+    nome_predio = models.CharField(max_length=100, db_column='nome')
 
     class Meta:
         managed = False

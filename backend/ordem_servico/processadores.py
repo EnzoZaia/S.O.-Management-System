@@ -23,8 +23,15 @@ from django.utils import timezone
 
 from ativo.models import Ativo
 from ativo.services import calcular_proxima_preventiva, criar_ou_atualizar_os_preventiva_para_ativo
+from ordem_servico.constantes import (
+    AGUARDANDO_VALIDACAO,
+    CONCLUIDA,
+    ENCERRADA,
+    TIPO_CORRETIVA,
+    TIPO_PREVENTIVA,
+)
 from ordem_servico.models import OrdemServico
-from utils.historico import registrar_historico
+from utils.historico import registrar_mudanca_status
 
 _PADRAO_PATRIMONIO = re.compile(r'\[PAT:\s*([^\]]+)\]')
 
@@ -45,6 +52,9 @@ class _ProcessadorOrdemServicoBase(ProcessadorOrdemServico):
 
     def _concluir(self, ordem_servico: OrdemServico, motivo_tecnico: str) -> None:
         ordem_servico.dt_conclusao = timezone.now()
+        self._registrar_execucao(ordem_servico, motivo_tecnico)
+
+    def _registrar_execucao(self, ordem_servico: OrdemServico, motivo_tecnico: str) -> None:
         self._vincular_ativo_pela_observacao(ordem_servico, motivo_tecnico)
         self._atualizar_manutencao_do_ativo(ordem_servico)
 
@@ -79,17 +89,37 @@ class _ProcessadorOrdemServicoBase(ProcessadorOrdemServico):
         criar_ou_atualizar_os_preventiva_para_ativo(ativo)
 
 
+_STATUS_DE_CONCLUSAO_PELO_TECNICO = (CONCLUIDA, AGUARDANDO_VALIDACAO)
+
+
 class ProcessadorCorretiva(_ProcessadorOrdemServicoBase):
     def finalizar(self, ordem_servico: OrdemServico, motivo_tecnico: str) -> None:
-        if ordem_servico.status_ordem_servico == "CONCLUIDA":
+        if ordem_servico.status_ordem_servico not in _STATUS_DE_CONCLUSAO_PELO_TECNICO:
+            return
+
+        if not self._tem_quem_valide(ordem_servico):
+            ordem_servico.status_ordem_servico = CONCLUIDA
             self._concluir(ordem_servico, motivo_tecnico)
+            return
+
+        self._registrar_execucao(ordem_servico, motivo_tecnico)
+        ordem_servico.status_ordem_servico = AGUARDANDO_VALIDACAO
+        ordem_servico.dt_conclusao = None
+
+    @staticmethod
+    def _tem_quem_valide(ordem_servico: OrdemServico) -> bool:
+        if ordem_servico.solicitante_id:
+            return True
+        if ordem_servico.pk is None:
+            return False
+        return ordem_servico.participantes.exists()
 
 
 class ProcessadorPreventiva(_ProcessadorOrdemServicoBase):
     def finalizar(self, ordem_servico: OrdemServico, motivo_tecnico: str) -> None:
-        if ordem_servico.status_ordem_servico == "CONCLUIDA":
+        if ordem_servico.status_ordem_servico in _STATUS_DE_CONCLUSAO_PELO_TECNICO:
             self._concluir(ordem_servico, motivo_tecnico)
-            ordem_servico.status_ordem_servico = "ENCERRADA"
+            ordem_servico.status_ordem_servico = ENCERRADA
 
 
 class ProcessadorOrdemServicoFactory(ABC):
@@ -111,8 +141,8 @@ class PreventivaFactory(ProcessadorOrdemServicoFactory):
 
 
 _FABRICAS_POR_TIPO_MANUTENCAO = {
-    "CORRETIVA": CorretivaFactory,
-    "PREVENTIVA": PreventivaFactory,
+    TIPO_CORRETIVA: CorretivaFactory,
+    TIPO_PREVENTIVA: PreventivaFactory,
 }
 
 
@@ -146,17 +176,10 @@ class ComHistoricoDecorator(ProcessadorDecorator):
         self._status_anterior = status_anterior
 
     def finalizar(self, ordem_servico: OrdemServico, motivo_tecnico: str) -> None:
-        novo_status = ordem_servico.status_ordem_servico
-
         super().finalizar(ordem_servico, motivo_tecnico)
 
-        registrar_historico(ordem_servico, self._usuario, self._montar_texto(novo_status, motivo_tecnico))
-
-    def _montar_texto(self, novo_status: str, motivo_tecnico: str) -> str:
-        texto_historico = f"Status alterado: {self._status_anterior} -> {novo_status}."
-        if motivo_tecnico and str(motivo_tecnico).strip():
-            texto_historico += f" Detalhes: {str(motivo_tecnico).strip()}"
-        return texto_historico
+        ordem_servico.save()
+        registrar_mudanca_status(ordem_servico, self._usuario, self._status_anterior, ordem_servico.status_ordem_servico, motivo_tecnico)
 
 
 class ComLogDecorator(ProcessadorDecorator):

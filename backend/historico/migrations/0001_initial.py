@@ -1,4 +1,4 @@
-import django.db.models.deletion
+import django.utils.timezone
 from django.db import migrations, models
 
 
@@ -7,23 +7,22 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ('ordem_servico', '0001_initial'),
-        ('usuario', '0001_initial'),
     ]
 
     operations = [
         migrations.CreateModel(
             name='Historico',
             fields=[
-                ('id_historico_ordem_servico', models.BigAutoField(primary_key=True, serialize=False)),
-                ('data_registro', models.DateTimeField()),
-                ('desc_historico', models.CharField(max_length=255)),
-                ('ordem_servico', models.ForeignKey(db_column='id_ordem_servico', on_delete=django.db.models.deletion.CASCADE, to='ordem_servico.ordemservico')),
-                ('usuario', models.ForeignKey(db_column='id_usuario', on_delete=django.db.models.deletion.DO_NOTHING, to='usuario.usuario')),
+                ('id_historico_ordem_servico', models.AutoField(db_column='id', primary_key=True, serialize=False)),
+                ('data_registro', models.DateTimeField(default=django.utils.timezone.now)),
+                ('desc_historico', models.TextField(blank=True, db_column='descricao', null=True)),
+                ('status_anterior', models.CharField(blank=True, max_length=30, null=True)),
+                ('status_novo', models.CharField(blank=True, max_length=30, null=True)),
+                ('tipo_evento', models.CharField(blank=True, max_length=30, null=True)),
             ],
             options={
                 'db_table': 'historico',
-                'managed': True,
+                'managed': False,
             },
         ),
     ]

@@ -1,4 +1,3 @@
-import django.db.models.deletion
 from django.db import migrations, models
 
 
@@ -7,28 +6,26 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ('localizacao', '0001_initial'),
-        ('usuario', '0001_initial'),
     ]
 
     operations = [
         migrations.CreateModel(
             name='OrdemServico',
             fields=[
-                ('id_ordem_servico', models.BigAutoField(primary_key=True, serialize=False)),
-                ('prioridade_urgencia', models.CharField(max_length=20)),
-                ('status_ordem_servico', models.CharField(max_length=30)),
-                ('dt_abertura', models.DateTimeField()),
-                ('dt_conclusao', models.DateTimeField(blank=True, null=True)),
-                ('descricao_servico', models.CharField(max_length=255)),
-                ('gestor', models.ForeignKey(blank=True, db_column='id_gestor', null=True, on_delete=django.db.models.deletion.DO_NOTHING, related_name='ordens_gerenciadas', to='usuario.usuario')),
-                ('localizacao', models.ForeignKey(db_column='id_localizacao', on_delete=django.db.models.deletion.DO_NOTHING, to='localizacao.localizacao')),
-                ('solicitante', models.ForeignKey(db_column='id_solicitante', on_delete=django.db.models.deletion.DO_NOTHING, related_name='ordens_abertas', to='usuario.usuario')),
-                ('tecnico', models.ForeignKey(blank=True, db_column='id_tecnico', null=True, on_delete=django.db.models.deletion.DO_NOTHING, related_name='ordens_atribuidas', to='usuario.usuario')),
+                ('id_ordem_servico', models.AutoField(db_column='id', primary_key=True, serialize=False)),
+                ('id_solicitacao', models.IntegerField(blank=True, db_column='solicitacao_id', null=True, unique=True)),
+                ('tipo_manutencao', models.CharField(default='CORRETIVA', max_length=30)),
+                ('categoria_manutencao', models.CharField(blank=True, max_length=50, null=True)),
+                ('prioridade_urgencia', models.CharField(db_column='prioridade', default='NORMAL', max_length=20)),
+                ('status_ordem_servico', models.CharField(db_column='status', default='EM_TRIAGEM', max_length=30)),
+                ('descricao_servico', models.TextField()),
+                ('causa_raiz', models.TextField(blank=True, null=True)),
+                ('dt_abertura', models.DateTimeField(db_column='data_abertura')),
+                ('dt_conclusao', models.DateTimeField(blank=True, db_column='data_conclusao', null=True)),
             ],
             options={
                 'db_table': 'ordem_servico',
-                'managed': True,
+                'managed': False,
             },
         ),
     ]

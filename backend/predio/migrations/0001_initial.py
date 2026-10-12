@@ -12,12 +12,12 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='Predio',
             fields=[
-                ('id_predio', models.BigAutoField(primary_key=True, serialize=False)),
-                ('nome_predio', models.CharField(max_length=100)),
+                ('id_predio', models.AutoField(db_column='id', primary_key=True, serialize=False)),
+                ('nome_predio', models.CharField(db_column='nome', max_length=100)),
             ],
             options={
                 'db_table': 'predio',
-                'managed': True,
+                'managed': False,
             },
         ),
     ]
