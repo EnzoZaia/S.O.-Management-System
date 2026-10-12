@@ -41,7 +41,7 @@ def _criar_localizacao():
 def _criar_os(localizacao, **campos):
     valores = {
         "tipo_manutencao": "CORRETIVA",
-        "prioridade_urgencia": "NAO",
+        "prioridade_urgencia": "NORMAL",
         "status_ordem_servico": "APROVADA",
         "dt_abertura": timezone.now(),
         "descricao_servico": "OS de teste.",
@@ -108,7 +108,7 @@ def test_com_historico_sem_motivo_omite_detalhes(motivo):
 
 
 @pytest.mark.django_db
-def test_com_historico_registra_status_pedido_mesmo_quando_preventiva_vira_encerrada():
+def test_com_historico_registra_status_efetivo_quando_preventiva_vira_encerrada():
     localizacao = _criar_localizacao()
     ativo = Ativo.objects.create(
         localizacao=localizacao,
@@ -126,7 +126,7 @@ def test_com_historico_registra_status_pedido_mesmo_quando_preventiva_vira_encer
     processador.finalizar(ordem_servico, "")
 
     assert ordem_servico.status_ordem_servico == "ENCERRADA"
-    assert Historico.objects.get(ordem_servico=ordem_servico).desc_historico == "Status alterado: APROVADA -> CONCLUIDA."
+    assert Historico.objects.get(ordem_servico=ordem_servico).desc_historico == "Status alterado: APROVADA -> ENCERRADA."
 
 
 @pytest.mark.django_db

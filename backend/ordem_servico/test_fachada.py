@@ -6,8 +6,6 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from ativo.models import Ativo
-from grupo.models import Grupo
-from grupo_usuario.models import GrupoUsuario
 from historico.models import Historico
 from localizacao.models import Localizacao
 from ordem_servico.builders import OrdemServicoDiretor
@@ -26,16 +24,13 @@ from ordem_servico.processadores import (
 )
 from predio.models import Predio
 from usuario.models import Usuario
+from utils.apoio_testes import criar_os, criar_usuario
 
 STATUS_FINAIS = ["ENCERRADA", "CANCELADA"]
 
 
 def _criar_usuario_com_grupo(nome, email, nome_grupo=None):
-    usuario = Usuario.objects.create(nome=nome, email=email, senha_hash="x")
-    if nome_grupo:
-        grupo, _ = Grupo.objects.get_or_create(desc_grupo=nome_grupo)
-        GrupoUsuario.objects.create(usuario=usuario, grupo=grupo)
-    return usuario
+    return criar_usuario(nome, email, nome_grupo)
 
 
 def _criar_localizacao():
@@ -44,19 +39,22 @@ def _criar_localizacao():
 
 
 def _criar_os(localizacao, **campos):
-    valores = {
-        "tipo_manutencao": "CORRETIVA",
-        "prioridade_urgencia": "NAO",
-        "status_ordem_servico": "ABERTA",
-        "dt_abertura": timezone.now(),
-        "descricao_servico": "OS de teste.",
-    }
-    valores.update(campos)
-    return OrdemServico.objects.create(localizacao=localizacao, **valores)
+    return criar_os(localizacao, **campos)
 
 
 def _descricoes_historico(ordem_servico):
-    return list(Historico.objects.filter(ordem_servico=ordem_servico).values_list("desc_historico", flat=True))
+    return list(
+        Historico.objects.filter(ordem_servico=ordem_servico)
+        .exclude(tipo_evento="ATRIBUICAO")
+        .order_by("id_historico_ordem_servico")
+        .values_list("desc_historico", flat=True)
+    )
+
+
+def _atribuicoes(ordem_servico):
+    return list(
+        Historico.objects.filter(ordem_servico=ordem_servico, tipo_evento="ATRIBUICAO").values_list("tecnico_id", "usuario_id")
+    )
 
 
 @pytest.mark.django_db
@@ -68,7 +66,7 @@ def test_abrir_com_usuario_autenticado_monta_corretiva_e_registra_historico_uma_
         "localizacao": localizacao,
         "descricao_servico": "Lâmpada queimada no corredor.",
         "categoria_manutencao": "ELETRICA",
-        "prioridade_urgencia": "SIM",
+        "prioridade_urgencia": "URGENTE",
         "status_ordem_servico": "CONCLUIDA",
         "tipo_manutencao": "PREVENTIVA",
     })
@@ -76,25 +74,24 @@ def test_abrir_com_usuario_autenticado_monta_corretiva_e_registra_historico_uma_
     assert ordem_servico.pk is not None
     assert ordem_servico.solicitante_id == solicitante.pk
     assert ordem_servico.tipo_manutencao == "CORRETIVA"
-    assert ordem_servico.status_ordem_servico == "ABERTA"
+    assert ordem_servico.status_ordem_servico == "EM_TRIAGEM"
     assert ordem_servico.categoria_manutencao == "ELETRICA"
     assert _descricoes_historico(ordem_servico) == ["Ordem de serviço aberta por Maria. Status inicial: ABERTA."]
 
 
 @pytest.mark.django_db
-def test_abrir_anonimo_usa_primeiro_usuario_para_assinar_o_historico():
+def test_abrir_anonimo_registra_historico_sem_usuario():
     localizacao = _criar_localizacao()
-    admin = _criar_usuario_com_grupo("Admin", "admin.fachada@fho.edu.br")
 
     ordem_servico = OrdemServicoFacade().abrir(None, {
         "localizacao": localizacao,
         "descricao_servico": "Torneira da recepção pingando.",
-        "prioridade_urgencia": "NAO",
+        "prioridade_urgencia": "NORMAL",
     })
 
     historico = Historico.objects.get(ordem_servico=ordem_servico)
     assert ordem_servico.solicitante is None
-    assert historico.usuario_id == admin.pk
+    assert historico.usuario_id is None
     assert historico.desc_historico == "Ordem de serviço aberta por Usuário Anônimo. Status inicial: ABERTA."
 
 
@@ -107,7 +104,7 @@ def test_abrir_repassa_campos_extra_ao_diretor():
     ordem_servico = OrdemServicoFacade().abrir(solicitante, {
         "localizacao": localizacao,
         "descricao_servico": "Bebedouro sem água gelada.",
-        "prioridade_urgencia": "NAO",
+        "prioridade_urgencia": "NORMAL",
         "ativo": ativo,
     })
 
@@ -147,7 +144,7 @@ def test_alterar_status_de_preventiva_concluida_persiste_encerrada():
 
     ordem_servico.refresh_from_db()
     assert ordem_servico.status_ordem_servico == "ENCERRADA"
-    assert _descricoes_historico(ordem_servico) == ["Status alterado: ABERTA -> CONCLUIDA."]
+    assert _descricoes_historico(ordem_servico) == ["Status alterado: ABERTA -> ENCERRADA."]
 
 
 @pytest.mark.django_db
@@ -219,7 +216,7 @@ def test_montar_processador_empilha_log_por_fora_do_historico():
     localizacao = _criar_localizacao()
     ordem_servico = _criar_os(localizacao)
 
-    pilha = OrdemServicoFacade()._montar_processador(ordem_servico, usuario=None, status_anterior="ABERTA")
+    pilha = OrdemServicoFacade()._montar_processador(ordem_servico, usuario=None, status_anterior="EM_TRIAGEM")
 
     assert isinstance(pilha, ComLogDecorator)
     assert isinstance(pilha.processador_envolvido, ComHistoricoDecorator)
@@ -242,7 +239,8 @@ def test_atribuir_tecnico_aprova_os_aberta_define_gestor_e_registra_historico():
     assert ordem_servico.tecnico_id == tecnico.pk
     assert ordem_servico.gestor_id == gestor.pk
     assert ordem_servico.status_ordem_servico == "APROVADA"
-    assert _descricoes_historico(ordem_servico) == ["Técnico atribuído: Carlos"]
+    assert _descricoes_historico(ordem_servico) == ["Status alterado: ABERTA -> APROVADA."]
+    assert _atribuicoes(ordem_servico) == [(tecnico.pk, gestor.pk)]
 
 
 @pytest.mark.django_db
@@ -250,13 +248,16 @@ def test_atribuir_tecnico_preserva_gestor_existente_e_status_nao_aberto():
     localizacao = _criar_localizacao()
     gestor_original = _criar_usuario_com_grupo("Gestor 1", "gestor1.atrib@fho.edu.br", "GESTOR")
     gerente = _criar_usuario_com_grupo("Gerente", "gerente.atrib@fho.edu.br", "GERENTE")
+    tecnico_antigo = _criar_usuario_com_grupo("Bruno", "bruno.atrib@fho.edu.br", "TECNICO")
     tecnico = _criar_usuario_com_grupo("Carlos", "carlos2.atrib@fho.edu.br", "TECNICO")
-    ordem_servico = _criar_os(localizacao, gestor=gestor_original, status_ordem_servico="AGUARDANDO_MATERIAL")
+    ordem_servico = _criar_os(localizacao, tecnico=tecnico_antigo, gestor=gestor_original, status_ordem_servico="AGUARDANDO_MATERIAL")
 
     OrdemServicoFacade().atribuir_tecnico(ordem_servico, tecnico, gerente)
 
+    recarregada = OrdemServico.objects.get(pk=ordem_servico.pk)
+    assert recarregada.tecnico_id == tecnico.pk
+    assert recarregada.gestor_id == gestor_original.pk
     ordem_servico.refresh_from_db()
-    assert ordem_servico.gestor_id == gestor_original.pk
     assert ordem_servico.status_ordem_servico == "AGUARDANDO_MATERIAL"
 
 
@@ -273,7 +274,7 @@ def test_atribuir_usuario_que_nao_e_tecnico_e_rejeitado_sem_alterar_a_os():
     assert erro.value.mensagem == "Usuário não é técnico."
     ordem_servico.refresh_from_db()
     assert ordem_servico.tecnico is None
-    assert ordem_servico.status_ordem_servico == "ABERTA"
+    assert ordem_servico.status_ordem_servico == "EM_TRIAGEM"
     assert _descricoes_historico(ordem_servico) == []
 
 
@@ -288,7 +289,7 @@ def test_cancelar_marca_cancelada_com_data_e_registra_historico():
     ordem_servico.refresh_from_db()
     assert ordem_servico.status_ordem_servico == "CANCELADA"
     assert ordem_servico.dt_conclusao is not None
-    assert _descricoes_historico(ordem_servico) == ["OS cancelada por Gerente"]
+    assert _descricoes_historico(ordem_servico) == ["Status alterado: APROVADA -> CANCELADA. Detalhes: OS cancelada por Gerente"]
 
 
 @pytest.mark.django_db
@@ -366,10 +367,12 @@ def test_api_patch_payload_invalido_mantem_mensagem_de_validacao():
 def test_api_post_autenticado_registra_historico_de_abertura_uma_vez():
     localizacao = _criar_localizacao()
     solicitante = _criar_usuario_com_grupo("Maria", "maria.api@fho.edu.br", "SOLICITANTE")
+    ativo = Ativo.objects.create(localizacao=localizacao, codigo_patrimonial="PAT-PORTA", tipo_ativo="BEBEDOURO")
 
     client = APIClient()
     client.force_authenticate(user=solicitante)
     resposta = client.post("/ordem-servico/", {
+        "ativo": ativo.pk,
         "localizacao": localizacao.pk,
         "descricao_servico": "Porta do laboratório emperrada.",
         "categoria_manutencao": "GERAIS",
@@ -402,4 +405,5 @@ def test_api_atribuir_tecnico_caminho_feliz_e_usuario_nao_tecnico():
     resposta = client.patch(url, {"tecnico": tecnico.pk})
     assert resposta.status_code == 200
     assert resposta.data == {"status": "sucesso", "mensagem": "Técnico atribuído", "dados": None}
-    assert _descricoes_historico(ordem_servico) == ["Técnico atribuído: Carlos"]
+    assert _descricoes_historico(ordem_servico) == ["Status alterado: ABERTA -> APROVADA."]
+    assert _atribuicoes(ordem_servico) == [(tecnico.pk, gestor.pk)]

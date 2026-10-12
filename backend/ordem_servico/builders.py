@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 
 from django.utils import timezone
 
+from ordem_servico.constantes import APROVADA, EM_TRIAGEM, PRIORIDADE_NORMAL, TIPO_CORRETIVA, TIPO_PREVENTIVA
 from ordem_servico.models import OrdemServico
 
 
@@ -31,7 +32,7 @@ class IOrdemServicoBuilder(ABC):
 class OrdemServicoBuilder(IOrdemServicoBuilder):
     def __init__(self) -> None:
         self._dados = {
-            "status_ordem_servico": "ABERTA",
+            "status_ordem_servico": EM_TRIAGEM,
             "dt_abertura": timezone.now(),
         }
 
@@ -48,15 +49,15 @@ class OrdemServicoBuilder(IOrdemServicoBuilder):
         return self
 
     def como_corretiva(self, categoria_manutencao=None, prioridade_urgencia=None) -> "OrdemServicoBuilder":
-        self._dados["tipo_manutencao"] = "CORRETIVA"
+        self._dados["tipo_manutencao"] = TIPO_CORRETIVA
         self._dados["categoria_manutencao"] = categoria_manutencao
-        self._dados["prioridade_urgencia"] = prioridade_urgencia
+        self._dados["prioridade_urgencia"] = prioridade_urgencia or PRIORIDADE_NORMAL
         return self
 
     def como_preventiva(self) -> "OrdemServicoBuilder":
-        self._dados["tipo_manutencao"] = "PREVENTIVA"
+        self._dados["tipo_manutencao"] = TIPO_PREVENTIVA
         self._dados["categoria_manutencao"] = "GERAIS"
-        self._dados["prioridade_urgencia"] = "NAO"
+        self._dados["prioridade_urgencia"] = PRIORIDADE_NORMAL
         return self
 
     def com_descricao(self, texto) -> "OrdemServicoBuilder":
@@ -118,8 +119,8 @@ class OrdemServicoDiretor:
 
         os_existente = OrdemServico.objects.filter(
             ativo=ativo,
-            tipo_manutencao="PREVENTIVA",
-            status_ordem_servico__in=["ABERTA", "APROVADA"],
+            tipo_manutencao=TIPO_PREVENTIVA,
+            status_ordem_servico__in=[EM_TRIAGEM, APROVADA],
         ).first()
 
         if os_existente:

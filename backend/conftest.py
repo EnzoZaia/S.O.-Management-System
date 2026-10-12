@@ -10,18 +10,29 @@ models especificamente durante a montagem do banco de testes, antes de
 """
 import pytest
 from django.apps import apps
+from django.conf import settings
 from django.test.utils import setup_databases, teardown_databases
 
 APPS_COM_TABELAS_EXTERNAS = [
     "usuario",
-    "grupo",
-    "grupo_usuario",
+    "perfil",
     "predio",
     "localizacao",
     "ordem_servico",
     "historico",
     "ativo",
+    "os_participante",
+    "validacao",
+    "auditoria_usuario",
 ]
+
+
+class _SemMigrations(dict):
+    def __contains__(self, item):
+        return True
+
+    def __getitem__(self, item):
+        return None
 
 
 def _marcar_models_como_gerenciados():
@@ -33,6 +44,7 @@ def _marcar_models_como_gerenciados():
 @pytest.fixture(scope="session")
 def django_db_setup(request, django_test_environment, django_db_blocker):
     _marcar_models_como_gerenciados()
+    settings.MIGRATION_MODULES = _SemMigrations()
 
     with django_db_blocker.unblock():
         db_cfg = setup_databases(
@@ -47,3 +59,12 @@ def django_db_setup(request, django_test_environment, django_db_blocker):
             teardown_databases(db_cfg, verbosity=request.config.option.verbose)
 
     request.addfinalizer(teardown_database)
+
+
+@pytest.fixture(autouse=True)
+def _limpar_cache_entre_testes():
+    from django.core.cache import cache
+
+    cache.clear()
+    yield
+    cache.clear()
