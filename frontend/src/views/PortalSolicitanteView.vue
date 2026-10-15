@@ -38,9 +38,9 @@
         class="px-4 py-2 text-xs font-bold text-red-700 bg-white border border-red-200 rounded-lg hover:bg-red-100 cursor-pointer">Tentar
         novamente</button>
     </div>
-    <div v-else-if="ordensFiltradas.length === 0" class="bg-white rounded-xl border border-gray-100 p-12 text-center">
+        <div v-else-if="ordensFiltradas.length === 0" class="bg-white rounded-xl border border-gray-100 p-12 text-center">
       <span class="text-5xl block mb-3 opacity-50">📭</span>
-     <p class="text-gray-500 font-semibold">{{ ordens.length === 0 ? 'Você ainda não tem solicitações.' : 'Nenhuma solicitação encontrada.' }}</p>
+      <p class="text-gray-500 font-semibold">{{ ordens.length === 0 ? 'Você ainda não tem solicitações.' : 'Nenhuma solicitação encontrada.' }}</p>
     </div>
 
     <div v-else class="grid grid-cols-1 xl:grid-cols-2 gap-4">
@@ -152,7 +152,7 @@
             <div class="p-4 bg-gray-50 rounded-xl border border-gray-100 text-sm text-gray-700 whitespace-pre-wrap">{{
               extrairProblema(selecionada.descricao_servico) }}</div>
           </div>
-
+          <EvidenciasOrdem :id-ordem="selecionada.id_ordem_servico" :pode-enviar="acoes.evidencia" />
           <div>
             <h3 class="text-sm font-bold text-gray-700 mb-4">⏱️ Histórico</h3>
             <div class="bg-gray-50/50 rounded-2xl border border-gray-100 p-5">
@@ -184,9 +184,10 @@
             Validar serviço executado</button>
           <div class="flex flex-wrap items-center justify-between gap-3">
             <div class="flex flex-wrap gap-2">
-              <button v-if="acoes.evidencia" @click="emBreve('Envio de evidências')"
-                class="px-4 py-2 text-xs font-bold text-indigo-600 bg-white border border-indigo-200 hover:bg-indigo-50 rounded-lg cursor-pointer">📎
-                Anexar evidência</button>
+              <button v-if="acoes.evidencia"
+                class="px-4 py-2 text-xs font-bold text-indigo-600 bg-white border border-indigo-200 hover:bg-indigo-50 rounded-lg cursor-pointer">
+                📎 Anexar evidência
+              </button>
               <button v-if="acoes.avaliar" @click="irParaAvaliacao(selecionada.id_ordem_servico)"
                 class="px-4 py-2 text-xs font-bold text-amber-600 bg-white border border-amber-200 hover:bg-amber-50 rounded-lg cursor-pointer">⭐
                 {{ avaliacao ? 'Ver minha avaliação' : 'Avaliar atendimento' }}</button>
@@ -206,6 +207,7 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import Swal from 'sweetalert2'
+import EvidenciasOrdem from '@/components/EvidenciasOrdem.vue'
 import ValidacaoServicoModal from '@/components/ValidacaoServicoModal.vue'
 import EstrelasAvaliacao from '@/components/EstrelasAvaliacao.vue'
 import {

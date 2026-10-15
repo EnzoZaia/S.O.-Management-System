@@ -88,3 +88,20 @@ export interface ErroAvaliacao {
   mensagem: string
   avaliacao?: AvaliacaoRegistrada | null
 }
+
+export interface EvidenciaOrdem {
+  id_evidencia_ordem: number
+  ordem: number
+  nome_original: string
+  tipo_arquivo: 'IMAGEM' | 'VIDEO'
+  url: string
+  enviado_por_nome?: string
+  dt_envio: string
+}
+
+export type TipoErroEvidencia = 'SEM_PERMISSAO' | 'STATUS_INVALIDO' | 'ARQUIVO_INVALIDO' | 'GENERICO'
+
+export interface ErroEvidencia {
+  tipo: TipoErroEvidencia
+  mensagem: string
+}
