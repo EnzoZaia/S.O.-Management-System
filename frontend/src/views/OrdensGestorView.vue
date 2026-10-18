@@ -144,8 +144,9 @@
               </span>
             </div>
 
-            <div class="relative">
-              <select :value="osSelecionada?.prioridade_urgencia" @change="alterarPrioridade($event.target.value)"
+            <!-- US09: durante a triagem a prioridade é definida no painel de triagem -->
+            <div v-if="osSelecionada?.status_ordem_servico !== 'ABERTA'" class="relative">
+              <select :value="osSelecionada?.prioridade_urgencia" @change="alterarPrioridade(($event.target as HTMLSelectElement).value)"
                 class="pl-4 pr-8 py-1.5 rounded-full text-sm font-bold outline-none cursor-pointer appearance-none border transition-colors bg-gray-50 border-gray-200 hover:bg-gray-100 text-gray-700"
                 :class="osSelecionada?.prioridade_urgencia === 'SIM' ? 'text-red-700 bg-red-50 border-red-200 hover:bg-red-100' : ''">
                 <option value="NAO">Prioridade: Normal</option>
@@ -213,6 +214,58 @@
             </div>
           </div>
 
+          <!-- US09: painel de triagem -->
+          <div v-if="osSelecionada?.status_ordem_servico === 'ABERTA'" data-testid="painel-triagem"
+            class="mt-6 rounded-2xl border border-blue-100 bg-blue-50/40 p-5 space-y-4">
+            <div>
+              <p class="text-[11px] font-black text-blue-600 uppercase tracking-wider">Triagem da ordem</p>
+              <p class="text-xs text-gray-500 mt-0.5">Classifique e decida. A decisão fica registrada no histórico.</p>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <button v-for="d in DECISOES" :key="d.valor" type="button" @click="escolherDecisao(d.valor)"
+                :class="triagem.decisao === d.valor ? d.ativo : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'"
+                class="py-2.5 rounded-xl border text-sm font-bold transition-all cursor-pointer">{{ d.rotulo }}</button>
+            </div>
+            <p v-if="errosTriagem.decisao" role="alert" class="text-xs font-medium text-red-600">{{ errosTriagem.decisao }}</p>
+
+            <div v-if="triagem.decisao === 'APROVAR'" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div class="space-y-1.5">
+                <label class="text-xs font-bold text-gray-500 uppercase tracking-wider">Categoria técnica *</label>
+                <select v-model="triagem.categoria" @change="errosTriagem.categoria = ''"
+                  :class="errosTriagem.categoria ? 'border-red-500' : 'border-gray-200'"
+                  class="w-full bg-white border text-gray-700 text-sm font-bold rounded-lg px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer">
+                  <option value="" disabled>Selecione...</option>
+                  <option v-for="c in CATEGORIAS" :key="c.valor" :value="c.valor">{{ c.rotulo }}</option>
+                </select>
+                <p v-if="errosTriagem.categoria" role="alert" class="text-[11px] font-medium text-red-600">{{ errosTriagem.categoria }}</p>
+              </div>
+              <div class="space-y-1.5">
+                <label class="text-xs font-bold text-gray-500 uppercase tracking-wider">Prioridade *</label>
+                <select v-model="triagem.prioridade" @change="errosTriagem.prioridade = ''"
+                  :class="errosTriagem.prioridade ? 'border-red-500' : 'border-gray-200'"
+                  class="w-full bg-white border text-gray-700 text-sm font-bold rounded-lg px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer">
+                  <option value="NAO">Normal</option>
+                  <option value="SIM">🚨 Urgente</option>
+                </select>
+                <p v-if="errosTriagem.prioridade" role="alert" class="text-[11px] font-medium text-red-600">{{ errosTriagem.prioridade }}</p>
+              </div>
+            </div>
+
+            <div v-if="triagem.decisao === 'REPROVAR' || triagem.decisao === 'CANCELAR'" class="space-y-1.5">
+              <label for="just-triagem" class="text-xs font-bold text-gray-500 uppercase tracking-wider">Justificativa *</label>
+              <textarea id="just-triagem" v-model="triagem.justificativa" @blur="validarJustificativaCampo" rows="3"
+                :maxlength="JUSTIFICATIVA_TRIAGEM_MAX"
+                :placeholder="triagem.decisao === 'CANCELAR' ? 'Por que esta ordem está sendo cancelada?' : 'Por que a triagem está sendo reprovada?'"
+                :class="errosTriagem.justificativa ? 'border-red-500 focus:ring-red-400' : 'border-gray-200 focus:ring-blue-500'"
+                class="w-full bg-white border text-gray-700 text-sm rounded-lg p-3 outline-none focus:ring-2 resize-none"></textarea>
+              <div class="flex justify-between text-[11px]">
+                <span class="text-red-600 font-medium">{{ errosTriagem.justificativa }}</span>
+                <span class="text-gray-400 font-semibold">{{ triagem.justificativa.trim().length }}/{{ JUSTIFICATIVA_TRIAGEM_MAX }}</span>
+              </div>
+            </div>
+          </div>
+
           <div class="mt-6">
             <p class="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2">
               {{ osSelecionada?.tipo_manutencao === 'PREVENTIVA' ? 'Roteiro de Inspeção Programada' : 'Descrição do Problema Reportado' }}
@@ -224,7 +277,7 @@
         <div class="p-6 border-t border-gray-100 bg-gray-50 flex flex-col sm:flex-row items-center justify-between gap-4 rounded-b-2xl shrink-0">
           <div class="w-full sm:w-auto" v-if="osSelecionada?.status_ordem_servico === 'ABERTA' || osSelecionada?.status_ordem_servico === 'APROVADA'">
             <div class="flex items-center gap-3">
-              <label class="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Atribuir a:</label>
+              <label class="text-[11px] font-bold text-gray-500 uppercase tracking-wider">{{ osSelecionada?.status_ordem_servico === 'ABERTA' ? 'Atribuir a (opcional):' : 'Atribuir a:' }}</label>
               <select v-model="tecnicoSelecionado" class="bg-white border border-gray-200 text-gray-700 text-sm font-bold rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 shadow-sm cursor-pointer min-w-[180px]">
                 <option value="" disabled>Selecione um técnico...</option>
                 <option v-for="tec in tecnicosDisponiveis" :key="tec.id_usuario" :value="tec.id_usuario">{{ tec.nome }}</option>
@@ -237,9 +290,17 @@
 
           <div class="flex gap-3 w-full sm:w-auto justify-end">
             <button @click="fecharModal" class="px-5 py-2.5 text-sm font-bold text-gray-600 bg-white border border-gray-200 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer">Fechar</button>
-            <button v-if="osSelecionada?.status_ordem_servico === 'ABERTA'" @click="reprovarOS" class="px-5 py-2.5 text-sm font-bold text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 rounded-xl transition-colors shadow-sm cursor-pointer">Reprovar OS</button>
-            <button v-if="osSelecionada?.status_ordem_servico === 'ABERTA' || osSelecionada?.status_ordem_servico === 'APROVADA'" @click="confirmarAtribuicao" class="px-5 py-2.5 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors shadow-sm cursor-pointer flex items-center gap-2">
-              <span>✅</span> {{ osSelecionada?.status_ordem_servico === 'ABERTA' ? 'Aprovar e Atribuir' : 'Salvar Atribuição' }}
+
+            <button v-if="osSelecionada?.status_ordem_servico === 'ABERTA'" @click="confirmarTriagem"
+              :disabled="salvandoTriagem || !triagem.decisao"
+              :class="triagem.decisao === 'APROVAR' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-red-600 hover:bg-red-700'"
+              class="px-5 py-2.5 text-sm font-bold text-white rounded-xl transition-colors shadow-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+              {{ salvandoTriagem ? 'Salvando...' : rotuloConfirmar }}
+            </button>
+
+            <button v-if="osSelecionada?.status_ordem_servico === 'APROVADA'" @click="confirmarAtribuicao"
+              class="px-5 py-2.5 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors shadow-sm cursor-pointer flex items-center gap-2">
+              <span>✅</span> Salvar Atribuição
             </button>
           </div>
         </div>
@@ -252,13 +313,15 @@
 import { ref, computed, onMounted } from 'vue'
 import api from '@/services/api'
 import Swal from 'sweetalert2'
+import { TriagemError, decidirTriagem } from '@/services/triagemService'
+import type { DecisaoTriagem, ErroTriagem, ErrosTriagem, FormularioTriagem } from '@/types/triagem'
+import {
+  CATEGORIAS, JUSTIFICATIVA_TRIAGEM_MAX, validarJustificativaTriagem, validarTriagem,
+} from '@/utils/validacaoTriagem'
 
 const abaAtiva = ref('CORRETIVA')
 const ordens = ref<any[]>([])
 const loading = ref(true)
-
-const historicoOS = ref<any[]>([])
-const loadingHistorico = ref(false)
 
 const filtroDataInicio = ref('')
 const filtroDataFim = ref('')
@@ -271,6 +334,45 @@ const modalAberto = ref(false)
 const osSelecionada = ref<any>(null)
 const tecnicosDisponiveis = ref<any[]>([])
 const tecnicoSelecionado = ref('')
+
+// === US09: triagem ===
+const DECISOES: { valor: DecisaoTriagem; rotulo: string; ativo: string }[] = [
+  { valor: 'APROVAR', rotulo: '✅ Aprovar', ativo: 'bg-blue-600 text-white border-blue-600 shadow-md' },
+  { valor: 'REPROVAR', rotulo: '🚫 Reprovar', ativo: 'bg-orange-500 text-white border-orange-500 shadow-md' },
+  { valor: 'CANCELAR', rotulo: '❌ Cancelar', ativo: 'bg-red-600 text-white border-red-600 shadow-md' },
+]
+
+const triagem = ref<FormularioTriagem>({ decisao: null, categoria: '', prioridade: 'NAO', justificativa: '' })
+const errosTriagem = ref<ErrosTriagem>({})
+const salvandoTriagem = ref(false)
+
+const rotuloConfirmar = computed(() => {
+  if (triagem.value.decisao === 'APROVAR') return tecnicoSelecionado.value ? 'Aprovar e Atribuir' : 'Aprovar ordem'
+  if (triagem.value.decisao === 'REPROVAR') return 'Confirmar reprovação'
+  if (triagem.value.decisao === 'CANCELAR') return 'Confirmar cancelamento'
+  return 'Selecione uma decisão'
+})
+
+function resetarTriagem(os?: any) {
+  triagem.value = {
+    decisao: null,
+    categoria: CATEGORIAS.some((c) => c.valor === os?.categoria_manutencao) ? os.categoria_manutencao : '',
+    prioridade: os?.prioridade_urgencia === 'SIM' ? 'SIM' : 'NAO',
+    justificativa: '',
+  }
+  errosTriagem.value = {}
+}
+
+function escolherDecisao(decisao: DecisaoTriagem) {
+  triagem.value.decisao = decisao
+  errosTriagem.value = {}
+}
+
+function validarJustificativaCampo() {
+  const d = triagem.value.decisao
+  if (d !== 'REPROVAR' && d !== 'CANCELAR') return
+  errosTriagem.value = { ...errosTriagem.value, justificativa: validarJustificativaTriagem(triagem.value.justificativa, d) ?? '' }
+}
 
 const prediosUnicos = computed(() => {
   const nomes = new Set(ordens.value.map(os => os.predio_nome).filter(Boolean))
@@ -364,11 +466,16 @@ async function carregarTecnicos() {
 function abrirModalDetalhes(os: any) {
   osSelecionada.value = os
   tecnicoSelecionado.value = os.tecnico_id || ''
+  resetarTriagem(os)
   modalAberto.value = true
   if (tecnicosDisponiveis.value.length === 0) carregarTecnicos()
 }
 
-function fecharModal() { modalAberto.value = false; osSelecionada.value = null }
+function fecharModal() {
+  modalAberto.value = false
+  osSelecionada.value = null
+  resetarTriagem()
+}
 
 async function alterarPrioridade(novaPrioridade: string) {
   try {
@@ -379,19 +486,81 @@ async function alterarPrioridade(novaPrioridade: string) {
   } catch (error) { Swal.fire({ title: 'Erro', text: 'Não foi possível alterar a prioridade.', icon: 'error' }) }
 }
 
-async function reprovarOS() {
-  const result = await Swal.fire({ title: 'Reprovar Ordem?', text: "Esta ação devolverá o status da ordem como reprovada.", icon: 'warning', showCancelButton: true, confirmButtonColor: '#ef4444', cancelButtonColor: '#6b7280', confirmButtonText: 'Sim, Reprovar', cancelButtonText: 'Cancelar', customClass: { confirmButton: 'cursor-pointer', cancelButton: 'cursor-pointer' } })
-  if (!result.isConfirmed) return
-  try {
-    await api.patch(`/ordem-servico/${osSelecionada.value.id_ordem_servico}/`, { status_ordem_servico: 'REPROVADA' }, authHeader())
-    Swal.fire({ title: 'Reprovada!', text: 'A ordem foi reprovada com sucesso.', icon: 'success', customClass: { confirmButton: 'cursor-pointer' } })
-    fecharModal(); carregarOrdens()
-  } catch (error) { Swal.fire({ title: 'Erro', text: 'Falha ao reprovar a ordem.', icon: 'error' }) }
+// === US09: decisão de triagem (aprovar / reprovar / cancelar) ===
+const MENSAGENS_TRIAGEM: Record<ErroTriagem['tipo'], { titulo: string; texto: string }> = {
+  FORA_ESCOPO: { titulo: 'Sem acesso', texto: 'Esta ordem não pertence ao seu escopo de responsabilidade.' },
+  STATUS_INVALIDO: { titulo: 'Ação indisponível', texto: 'Esta ordem não está mais em triagem. A lista foi atualizada.' },
+  VALIDACAO: { titulo: 'Dados inválidos', texto: 'Revise os campos destacados.' },
+  GENERICO: { titulo: 'Erro', texto: 'Não foi possível registrar a decisão. Tente novamente.' },
 }
 
+async function confirmarTriagem() {
+  const os = osSelecionada.value
+  if (!os || salvandoTriagem.value) return
+
+  errosTriagem.value = validarTriagem(triagem.value) // CA1 / CA2
+  if (Object.keys(errosTriagem.value).length > 0) return
+
+  const decisao = triagem.value.decisao as DecisaoTriagem
+  if (decisao !== 'APROVAR') {
+    const r = await Swal.fire({
+      title: decisao === 'CANCELAR' ? 'Cancelar esta ordem?' : 'Reprovar a triagem?',
+      text: 'A decisão ficará registrada no histórico e não poderá ser desfeita.',
+      icon: 'warning', showCancelButton: true, confirmButtonColor: '#ef4444', cancelButtonColor: '#6b7280',
+      confirmButtonText: decisao === 'CANCELAR' ? 'Sim, cancelar' : 'Sim, reprovar', cancelButtonText: 'Voltar',
+      customClass: { confirmButton: 'cursor-pointer', cancelButton: 'cursor-pointer' },
+    })
+    if (!r.isConfirmed) return
+  }
+
+  salvandoTriagem.value = true
+  try {
+    await decidirTriagem(os.id_ordem_servico, {
+      decisao,
+      categoria: triagem.value.categoria || undefined,
+      prioridade: triagem.value.prioridade,
+      justificativa: triagem.value.justificativa,
+    })
+
+    let avisoAtribuicao = ''
+    if (decisao === 'APROVAR' && tecnicoSelecionado.value) {
+      try {
+        await api.patch(`/ordem-servico/${os.id_ordem_servico}/atribuir-tecnico/`, { tecnico: tecnicoSelecionado.value }, authHeader())
+      } catch {
+        avisoAtribuicao = ' A atribuição do técnico falhou: faça-a pela ordem aprovada.'
+      }
+    }
+
+    const texto = {
+      APROVAR: 'Ordem aprovada e disponível para atribuição.',
+      REPROVAR: 'Triagem reprovada e registrada no histórico.',
+      CANCELAR: 'Ordem cancelada e registrada no histórico.',
+    }[decisao] + avisoAtribuicao
+    await Swal.fire({ title: 'Decisão registrada!', text: texto, icon: avisoAtribuicao ? 'warning' : 'success', timer: 3000, showConfirmButton: false })
+    fecharModal()
+    await carregarOrdens()
+  } catch (e) {
+    if (e instanceof TriagemError) {
+      errosTriagem.value = e.info.campos
+      const { titulo, texto } = MENSAGENS_TRIAGEM[e.info.tipo]
+      await Swal.fire({
+        title: titulo, text: e.info.tipo === 'GENERICO' ? e.info.mensagem || texto : texto,
+        icon: e.info.tipo === 'GENERICO' ? 'error' : 'info', confirmButtonColor: '#2563eb',
+      })
+      if (e.info.tipo === 'FORA_ESCOPO' || e.info.tipo === 'STATUS_INVALIDO') { fecharModal(); await carregarOrdens() } // CA3
+    } else {
+      console.error('Erro na triagem', e)
+      Swal.fire({ title: 'Erro', text: 'Não foi possível registrar a decisão. Tente novamente.', icon: 'error' })
+    }
+  } finally {
+    salvandoTriagem.value = false
+  }
+}
+
+// Atribuição de técnico para ordens já APROVADAS
 async function confirmarAtribuicao() {
   if (!tecnicoSelecionado.value) {
-    Swal.fire({ title: 'Atenção', text: 'Selecione um técnico antes de aprovar a Ordem.', icon: 'warning' })
+    Swal.fire({ title: 'Atenção', text: 'Selecione um técnico antes de salvar a atribuição.', icon: 'warning' })
     return
   }
   try {
