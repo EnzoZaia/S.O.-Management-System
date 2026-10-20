@@ -55,6 +55,15 @@
         <span class="text-sm whitespace-nowrap transition-all duration-300" :class="isExpanded ? 'opacity-100' : 'opacity-0 w-0'">Ativos</span>
       </button>
 
+      <button @click="router.push('/dashboard-gerente/preventivas')"
+        :class="[
+          'flex items-center gap-4 px-3 py-3 rounded-xl cursor-pointer transition-all duration-200 group',
+          route.path.includes('preventivas') ? 'bg-blue-600/50 text-white font-semibold shadow-inner' : 'text-blue-200 hover:bg-blue-800/50 hover:text-white'
+        ]">
+        <span class="text-xl w-8 text-center shrink-0">🏢</span>
+        <span class="text-sm whitespace-nowrap transition-all duration-300" :class="isExpanded ? 'opacity-100' : 'opacity-0 w-0'">Preventivas</span>
+      </button>
+
       <button @click="router.push('/dashboard-gerente/historico')"
         :class="[
           'flex items-center gap-4 px-3 py-3 rounded-xl cursor-pointer transition-all duration-200 group',

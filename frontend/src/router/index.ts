@@ -47,6 +47,10 @@ const router = createRouter({
           component: () => import('@/views/AtivosView.vue'),
         },
         {
+          path: 'preventivas',
+          component: () => import('@/views/PreventivasPrediosView.vue'),
+        },
+        {
           path: 'historico',
           component: () => import('@/views/HistoricoView.vue')
         },
@@ -63,11 +67,15 @@ const router = createRouter({
         },
         {
           path: 'indicadores',
-          component: () => import('@/views/IndicadoresGestorView.vue'),
+          component: () => import('@/views/Indicadoresgestorview.vue'),
         },
         {
           path: 'ativos',
           component: () => import('@/views/AtivosView.vue'),
+        },
+        {
+          path: 'preventivas',
+          component: () => import('@/views/PreventivasPrediosView.vue'),
         },
         {
           path: 'historico',
