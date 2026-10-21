@@ -179,6 +179,12 @@
               :versao="versaoApontamento" @carregado="inicioExecucao = $event" />
           </div>
 
+          <div v-if="osSelecionada?.tipo_manutencao === 'PREVENTIVA'" class="mt-6">
+            <GuiaChecklistPreventiva :id-ordem="osSelecionada.id_ordem_servico" :status="osSelecionada.status_ordem_servico"
+              :editavel="osSelecionada.status_ordem_servico === 'EM_EXECUCAO'"
+              @agrupada="ordemAgrupada = $event" @atualizado="aoAtualizarChecklist" />
+          </div>
+
           <div class="mt-6">
             <p class="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2">Descrição do Problema Reportado</p>
             <div class="p-4 bg-gray-50 rounded-xl border border-gray-100 text-sm text-gray-700 whitespace-pre-wrap">{{ extrairProblema(osSelecionada?.descricao_servico) }}</div>
@@ -207,7 +213,7 @@
                 <span>▶️</span> {{ osSelecionada?.status_ordem_servico === 'APROVADA' ? 'Iniciar Execução' : 'Retomar Serviço' }}
               </button>
 
-              <button v-if="osSelecionada?.status_ordem_servico === 'EM_EXECUCAO'" @click="painel = 'CONCLUSAO'" :disabled="enviando"
+              <button v-if="osSelecionada?.status_ordem_servico === 'EM_EXECUCAO' && !ordemAgrupada" @click="painel = 'CONCLUSAO'" :disabled="enviando"
                 class="px-5 py-2.5 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-colors shadow-sm cursor-pointer flex items-center gap-2 disabled:opacity-50">
                 <span>✅</span> Concluir Ordem
               </button>
@@ -231,6 +237,7 @@ import { ref, computed, onMounted } from 'vue'
 import api from '@/services/api'
 import Swal from 'sweetalert2'
 import ApontamentoTempo from '@/components/ApontamentoTempo.vue'
+import GuiaChecklistPreventiva from '@/components/GuiaChecklistPreventiva.vue'
 import ConclusaoCorretivaForm from '@/components/ConclusaoCorretivaForm.vue'
 import PausaOrdemForm from '@/components/PausaOrdemForm.vue'
 import { ExecucaoError, concluirExecucao, iniciarExecucao, pausarExecucao } from '@/services/execucaoService'
@@ -260,11 +267,13 @@ const enviando = ref(false)
 const versaoApontamento = ref(0)
 const inicioExecucao = ref<string | null>(null)
 const errosServidor = ref<ErrosConclusao | undefined>(undefined)
+// US14: ordem preventiva agrupada conclui por ativo (checklist), não pelo botão "Concluir Ordem"
+const ordemAgrupada = ref(false)
 
 const mensagemAcao = computed(() => {
   switch (osSelecionada.value?.status_ordem_servico) {
     case 'APROVADA': return 'Ordem liberada para início.'
-    case 'EM_EXECUCAO': return 'Serviço em andamento.'
+    case 'EM_EXECUCAO': return ordemAgrupada.value ? 'Serviço em andamento. Conclua cada ativo pelo checklist.' : 'Serviço em andamento.'
     case 'AGUARDANDO_MATERIAL': return 'Pausada por falta de material.'
     case 'AGUARDANDO_TERCEIRO': return 'Pausada aguardando terceiro.'
     case 'AGUARDANDO_VALIDACAO': return 'Aguardando a validação do solicitante.'
@@ -385,10 +394,21 @@ function abrirModalDetalhes(os: any) {
   painel.value = 'ACOES'
   inicioExecucao.value = null
   errosServidor.value = undefined
+  ordemAgrupada.value = false
   modalAberto.value = true
 }
 
-function fecharModal() { modalAberto.value = false; osSelecionada.value = null; painel.value = 'ACOES' }
+function fecharModal() { modalAberto.value = false; osSelecionada.value = null; painel.value = 'ACOES'; ordemAgrupada.value = false }
+
+// US14: o checklist mudou o resultado de um ativo (e talvez encerrou a ordem): sincroniza lista e modal.
+async function aoAtualizarChecklist() {
+  const id = osSelecionada.value?.id_ordem_servico
+  await carregarOrdens()
+  if (id === undefined) return
+  const atual = ordens.value.find((o) => o.id_ordem_servico === id)
+  if (atual) osSelecionada.value = atual
+  versaoApontamento.value++
+}
 
 async function alterarPrioridade(novaPrioridade: string) {
   try {
