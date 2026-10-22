@@ -36,7 +36,12 @@ def cenario(db):
 
 
 def _ate_concluida(cenario, aprovada=True):
-    _cliente(cenario["tecnico"]).patch(f"/ordem-servico/{cenario['os'].pk}/", {"status_ordem_servico": "CONCLUIDA"}, format="json")
+    concluida = _cliente(cenario["tecnico"]).patch(
+        f"/ordem-servico/{cenario['os'].pk}/",
+        {"status_ordem_servico": "CONCLUIDA", "observacao": "Tomada substituída.", "causa_raiz": "Desgaste natural"},
+        format="json",
+    )
+    assert concluida.status_code == 200
     corpo = {"aprovada": aprovada} if aprovada else {"aprovada": False, "justificativa": "Tomada continua sem energia."}
     resposta = _cliente(cenario["solicitante"]).patch(f"/ordem-servico/{cenario['os'].pk}/validar/", corpo, format="json")
     assert resposta.status_code == 200

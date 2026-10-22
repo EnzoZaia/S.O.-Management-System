@@ -8,7 +8,6 @@ from rest_framework.test import APIClient
 from ativo.models import Ativo
 from historico.models import Historico
 from localizacao.models import Localizacao
-from ordem_servico.builders import OrdemServicoDiretor
 from ordem_servico.fachada import (
     OrdemServicoFacade,
     OrdemServicoStatusFinalError,
@@ -115,16 +114,17 @@ def test_abrir_repassa_campos_extra_ao_diretor():
 def test_alterar_status_para_concluida_finaliza_e_registra_historico_uma_vez():
     localizacao = _criar_localizacao()
     tecnico = _criar_usuario_com_grupo("Tecnico", "tecnico.fachada@fho.edu.br", "TECNICO")
-    ordem_servico = _criar_os(localizacao, tecnico=tecnico, status_ordem_servico="APROVADA")
+    ordem_servico = _criar_os(localizacao, tecnico=tecnico, status_ordem_servico="EM_EXECUCAO")
 
     OrdemServicoFacade().alterar_status(
-        ordem_servico, tecnico, {"status_ordem_servico": "CONCLUIDA"}, "Reator trocado."
+        ordem_servico, tecnico, {"status_ordem_servico": "CONCLUIDA", "causa_raiz": "Desgaste natural"}, "Reator trocado."
     )
 
     ordem_servico.refresh_from_db()
     assert ordem_servico.status_ordem_servico == "CONCLUIDA"
     assert ordem_servico.dt_conclusao is not None
-    assert _descricoes_historico(ordem_servico) == ["Status alterado: APROVADA -> CONCLUIDA. Detalhes: Reator trocado."]
+    assert ordem_servico.causa_raiz == "Desgaste natural"
+    assert _descricoes_historico(ordem_servico) == ["Status alterado: EM_EXECUCAO -> CONCLUIDA. Detalhes: Reator trocado."]
 
 
 @pytest.mark.django_db
@@ -137,14 +137,16 @@ def test_alterar_status_de_preventiva_concluida_persiste_encerrada():
         periodicidade_preventiva_dias=90,
         dt_proxima_preventiva=date(2026, 10, 1),
     )
-    ordem_servico = OrdemServicoDiretor().construir_preventiva_automatica(ativo)
     tecnico = _criar_usuario_com_grupo("Tecnico", "tecnico.prev@fho.edu.br", "TECNICO")
+    ordem_servico = _criar_os(localizacao, tecnico=tecnico, ativo=ativo, tipo_manutencao="PREVENTIVA", status_ordem_servico="EM_EXECUCAO")
 
-    OrdemServicoFacade().alterar_status(ordem_servico, tecnico, {"status_ordem_servico": "CONCLUIDA"})
+    OrdemServicoFacade().alterar_status(ordem_servico, tecnico, {"status_ordem_servico": "CONCLUIDA"}, "Preventiva executada.")
 
     ordem_servico.refresh_from_db()
+    ativo.refresh_from_db()
     assert ordem_servico.status_ordem_servico == "ENCERRADA"
-    assert _descricoes_historico(ordem_servico) == ["Status alterado: ABERTA -> ENCERRADA."]
+    assert ativo.dt_ultima_preventiva is not None
+    assert _descricoes_historico(ordem_servico) == ["Status alterado: EM_EXECUCAO -> ENCERRADA. Detalhes: Preventiva executada."]
 
 
 @pytest.mark.django_db
@@ -200,7 +202,7 @@ def test_alterar_status_envolve_o_processador_da_fabrica_em_historico_e_log(capl
     fachada = OrdemServicoFacade(resolver_fabrica_processador=lambda tipo: FabricaEspia())
     localizacao = _criar_localizacao()
     tecnico = _criar_usuario_com_grupo("Tecnico", "tecnico.espiao@fho.edu.br", "TECNICO")
-    ordem_servico = _criar_os(localizacao, status_ordem_servico="APROVADA")
+    ordem_servico = _criar_os(localizacao, tecnico=tecnico, status_ordem_servico="APROVADA")
 
     with caplog.at_level(logging.INFO, logger="ordem_servico.processadores"):
         fachada.alterar_status(ordem_servico, tecnico, {"status_ordem_servico": "EM_EXECUCAO"})
@@ -252,7 +254,7 @@ def test_atribuir_tecnico_preserva_gestor_existente_e_status_nao_aberto():
     tecnico = _criar_usuario_com_grupo("Carlos", "carlos2.atrib@fho.edu.br", "TECNICO")
     ordem_servico = _criar_os(localizacao, tecnico=tecnico_antigo, gestor=gestor_original, status_ordem_servico="AGUARDANDO_MATERIAL")
 
-    OrdemServicoFacade().atribuir_tecnico(ordem_servico, tecnico, gerente)
+    OrdemServicoFacade().atribuir_tecnico(ordem_servico, tecnico, gerente, "Bruno saiu de férias nesta semana.")
 
     recarregada = OrdemServico.objects.get(pk=ordem_servico.pk)
     assert recarregada.tecnico_id == tecnico.pk

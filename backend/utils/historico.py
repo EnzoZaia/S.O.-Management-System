@@ -16,14 +16,14 @@ def registrar_historico(ordem_servico, usuario, descricao):
     return Historico.objects.create(ordem_servico=ordem_servico, usuario=usuario, data_registro=timezone.now(), desc_historico=descricao)
 
 
-def registrar_atribuicao(ordem_servico, responsavel, tecnico):
+def registrar_atribuicao(ordem_servico, responsavel, tecnico, descricao=None):
     return Historico.objects.create(
         ordem_servico=ordem_servico,
         usuario=responsavel,
         tecnico=tecnico,
         tipo_evento=EVENTO_ATRIBUICAO,
         data_registro=timezone.now(),
-        desc_historico=f"Técnico atribuído: {tecnico.nome}",
+        desc_historico=descricao or f"Técnico atribuído: {tecnico.nome}",
     )
 
 

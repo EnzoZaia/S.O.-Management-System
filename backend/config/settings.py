@@ -42,6 +42,10 @@ INSTALLED_APPS = [
     'os_participante',
     'validacao',
     'auditoria_usuario',
+    'notificacao',
+    'evidencia_os',
+    'preventiva_grupo',
+    'inteligencia',
 ]
 
 MIDDLEWARE = [
@@ -122,12 +126,39 @@ DOMINIOS_EMAIL_PERMITIDOS = tuple(
     ).split(',')
 )
 
+def _lista_env(nome, padrao):
+    return tuple(item.strip().lower() for item in os.getenv(nome, padrao).split(',') if item.strip())
+
+
+EVIDENCIA_FORMATOS_IMAGEM = _lista_env('EVIDENCIA_FORMATOS_IMAGEM', 'jpg,jpeg,png,webp')
+EVIDENCIA_FORMATOS_VIDEO = _lista_env('EVIDENCIA_FORMATOS_VIDEO', 'mp4,webm,mov')
+EVIDENCIA_IMAGEM_TAMANHO_MAX_MB = int(os.getenv('EVIDENCIA_IMAGEM_TAMANHO_MAX_MB', 5))
+EVIDENCIA_VIDEO_TAMANHO_MAX_MB = int(os.getenv('EVIDENCIA_VIDEO_TAMANHO_MAX_MB', 30))
+EVIDENCIA_MAX_POR_ENVIO = int(os.getenv('EVIDENCIA_MAX_POR_ENVIO', 5))
+EVIDENCIA_MAX_POR_ORDEM = int(os.getenv('EVIDENCIA_MAX_POR_ORDEM', 10))
+
+INTERVALO_PREVENTIVA_DIAS = {
+    'AR_CONDICIONADO': int(os.getenv('INTERVALO_PREVENTIVA_AR_CONDICIONADO_DIAS', 30)),
+    'BEBEDOURO': int(os.getenv('INTERVALO_PREVENTIVA_BEBEDOURO_DIAS', 180)),
+}
+INTERVALO_PREVENTIVA_PADRAO_DIAS = int(os.getenv('INTERVALO_PREVENTIVA_PADRAO_DIAS', 90))
+DIAS_ALERTA_PREVENTIVA_PROXIMA = int(os.getenv('DIAS_ALERTA_PREVENTIVA_PROXIMA', 7))
+
+ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY', '')
+ANTHROPIC_MODEL = os.getenv('ANTHROPIC_MODEL', 'claude-opus-5-5')
+ANTHROPIC_TIMEOUT_SEGUNDOS = float(os.getenv('ANTHROPIC_TIMEOUT_SEGUNDOS', 60))
+ANTHROPIC_MAX_RETRIES = int(os.getenv('ANTHROPIC_MAX_RETRIES', 2))
+ANTHROPIC_MAX_TOKENS = int(os.getenv('ANTHROPIC_MAX_TOKENS', 4000))
+
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
     {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
     {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'},
     {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
+
+if EXECUTANDO_TESTES:
+    PASSWORD_HASHERS = ['django.contrib.auth.hashers.MD5PasswordHasher']
 
 LANGUAGE_CODE = 'pt-br'
 TIME_ZONE = 'UTC'

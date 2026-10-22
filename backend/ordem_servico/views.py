@@ -14,10 +14,16 @@ from ordem_servico.fachada import (
 )
 from ordem_servico.models import OrdemServico
 from ordem_servico.participacao import corretiva_ativa_do_ativo, situacao_participacao
+from ordem_servico.transicoes import RegraTransicaoError
+from ordem_servico.indicadores import PeriodoInvalidoError, calcular_indicadores_gerenciais, resolver_periodo
+from evidencia_os.models import EvidenciaOrdem
+from evidencia_os.serializers import EvidenciaOrdemSerializer
+from evidencia_os.services import EvidenciaError, anexar_evidencias
 from ordem_servico.serializers import AbrirOrdemServicoSerializer, OrdemServicoSerializer, AtribuirTecnicoSerializer
 from usuario.models import Usuario
 from utils.responses import resposta_sucesso, resposta_erro, resposta_conflito
 from utils.permissions import (
+    IsGerente,
     IsGerenteOuGestor,
     IsGerenteOuGestorOuTecnico,
     IsSolicitanteOuParticipanteDaOS,
@@ -122,6 +128,8 @@ class OrdemServicoRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIVie
 
             try:
                 ordem_servico = fachada.alterar_status(ordem_servico, request.user, serializer.validated_data, motivo_tecnico)
+            except RegraTransicaoError as erro:
+                return resposta_erro(erro.mensagem, erro.erros, erro.status_code)
             except OperacaoOrdemServicoError as erro:
                 return resposta_erro(erro.mensagem, None)
 
@@ -147,7 +155,7 @@ class OrdemServicoAtribuirTecnicoView(APIView):
     permission_classes = (IsAuthenticated, IsGerenteOuGestor)
 
     def patch(self, request, pk):
-        os = get_object_or_404(OrdemServico, pk=pk)
+        os = get_object_or_404(_escopo_do_usuario(request.user), pk=pk)
 
         serializer = AtribuirTecnicoSerializer(data=request.data)
 
@@ -158,8 +166,12 @@ class OrdemServicoAtribuirTecnicoView(APIView):
         if tecnico is None:
             return resposta_erro("Técnico informado não existe.", {"tecnico": ["Técnico informado não existe."]})
 
+        justificativa = request.data.get("justificativa") or request.data.get("observacao") or ""
+
         try:
-            OrdemServicoFacade().atribuir_tecnico(os, tecnico, request.user)
+            OrdemServicoFacade().atribuir_tecnico(os, tecnico, request.user, justificativa)
+        except RegraTransicaoError as erro:
+            return resposta_erro(erro.mensagem, erro.erros, erro.status_code)
         except OperacaoOrdemServicoError as erro:
             return resposta_erro(erro.mensagem, None)
 
@@ -361,3 +373,42 @@ class OrdemServicoPresencieiView(APIView):
             return resposta_erro("Você não está vinculado a esta ordem como participante.", None, status.HTTP_404_NOT_FOUND)
 
         return resposta_sucesso("Vínculo de participante removido.", self._dados(ordem_servico, request.user))
+
+
+class OrdemServicoEvidenciasView(_LeituraOrdemServicoView):
+    def get(self, request, pk):
+        ordem_servico = self.obter_ordem_servico(request, pk)
+        evidencias = EvidenciaOrdem.objects.filter(ordem_servico=ordem_servico).select_related('usuario').order_by('sequencia')
+        return resposta_sucesso(
+            "Evidências carregadas com sucesso.",
+            EvidenciaOrdemSerializer(evidencias, many=True, context={'request': request}).data,
+        )
+
+    def post(self, request, pk):
+        ordem_servico = get_object_or_404(OrdemServico, pk=pk)
+        if not usuario_participa_da_os(request.user, ordem_servico):
+            self.permission_denied(request, message="Somente o solicitante ou um participante vinculado pode enviar evidências desta ordem.")
+
+        try:
+            criadas = anexar_evidencias(ordem_servico, request.user, request.FILES.getlist('arquivos'))
+        except EvidenciaError as erro:
+            return resposta_erro(erro.mensagem, {'arquivos': [erro.mensagem]}, erro.status_code)
+
+        return resposta_sucesso(
+            "Evidências enviadas com sucesso.",
+            EvidenciaOrdemSerializer(criadas, many=True, context={'request': request}).data,
+            status.HTTP_201_CREATED,
+        )
+
+
+class IndicadoresGerenciaisView(APIView):
+    permission_classes = (IsAuthenticated, IsGerente)
+
+    def get(self, request):
+        try:
+            periodo = resolver_periodo(
+                request.query_params.get('periodo'), request.query_params.get('inicio'), request.query_params.get('fim'),
+            )
+        except PeriodoInvalidoError as erro:
+            return resposta_erro(str(erro), {'periodo': [str(erro)]})
+        return resposta_sucesso("Indicadores gerenciais calculados com sucesso.", calcular_indicadores_gerenciais(periodo))

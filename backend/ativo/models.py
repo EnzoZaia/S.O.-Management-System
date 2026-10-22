@@ -27,3 +27,19 @@ class Ativo(models.Model):
 
     def __str__(self):
         return f'{self.tipo_ativo} - {self.codigo_patrimonial}'
+
+
+class ManualAtivo(models.Model):
+    id_manual = models.AutoField(primary_key=True, db_column='id')
+    ativo = models.ForeignKey(Ativo, on_delete=models.CASCADE, db_column='ativo_id', related_name='manuais')
+    titulo = models.CharField(max_length=150)
+    versao = models.CharField(max_length=30, null=True, blank=True)
+    caminho_arquivo = models.TextField()
+    ativo_para_consulta = models.BooleanField(default=True)
+
+    class Meta:
+        managed = False
+        db_table = 'manual_ativo'
+
+    def __str__(self):
+        return self.titulo

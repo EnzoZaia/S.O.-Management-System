@@ -10,7 +10,9 @@ from ordem_servico.constantes import (
     AGUARDANDO_TERCEIRO,
     AGUARDANDO_VALIDACAO,
     APROVADA,
+    ATRIBUIDA,
     EM_EXECUCAO,
+    REABERTA,
     REPROVADA,
     STATUS_FINALIZADOS,
     STATUS_VALIDOS,
@@ -19,6 +21,20 @@ from ordem_servico.constantes import (
 )
 from ordem_servico.models import OrdemServico
 from utils.permissions import usuario_tem_grupo
+
+
+def _filtro_escopo_gestor(usuario, status_extras=()) -> Q:
+    from perfil.equipes import area_do_gestor, filtro_categoria_da_area, ids_tecnicos_da_equipe
+
+    status_sem_responsavel = (ABERTA, REABERTA) + tuple(status_extras)
+    return (
+        Q(gestor_atual_id=usuario.pk)
+        | Q(tecnico_atual_id__in=ids_tecnicos_da_equipe(usuario))
+        | (
+            (Q(status_ordem_servico__in=status_sem_responsavel) | Q(status_ordem_servico=APROVADA, tecnico_atual_id__isnull=True))
+            & filtro_categoria_da_area(area_do_gestor(usuario))
+        )
+    )
 
 
 def _filtro_solicitante_ou_participante(usuario) -> Q:
@@ -51,9 +67,7 @@ class EscopoConsultaOSGerente(EscopoConsultaOS):
 
 class EscopoConsultaOSGestor(EscopoConsultaOS):
     def filtrar(self, usuario) -> QuerySet:
-        return OrdemServico.objects.com_responsaveis().filter(
-            Q(gestor_atual_id=usuario.pk) | Q(status_ordem_servico=ABERTA)
-        ).order_by('-dt_abertura')
+        return OrdemServico.objects.com_responsaveis().filter(_filtro_escopo_gestor(usuario)).order_by('-dt_abertura')
 
 
 class EscopoConsultaOSTecnico(EscopoConsultaOS):
@@ -71,6 +85,9 @@ class _RegraDashboardBase(RegraDashboard):
 
     def _query_base(self, usuario) -> QuerySet:
         raise NotImplementedError
+
+    def _tecnicos_permitidos(self, usuario):
+        return None
 
     def calcular_indicadores(self, usuario, periodo: str) -> dict:
         base_query = self._query_base(usuario)
@@ -120,9 +137,10 @@ class _RegraDashboardBase(RegraDashboard):
         tecnico_por_os = {id_os: id_tecnico for id_os, id_tecnico, _, _ in linhas_os}
         satisfacao = self._calcular_satisfacao(base_query, tecnico_por_os)
 
+        tecnicos_permitidos = self._tecnicos_permitidos(usuario)
         ranking = {}
         for _, id_tecnico, nome_tecnico, status_os in linhas_os:
-            if id_tecnico is None:
+            if id_tecnico is None or (tecnicos_permitidos is not None and id_tecnico not in tecnicos_permitidos):
                 continue
             item = ranking.setdefault(id_tecnico, {'nome': nome_tecnico, 'concluidas': 0, 'total': 0})
             item['total'] += 1
@@ -166,6 +184,13 @@ class _RegraDashboardBase(RegraDashboard):
                 'sem_tecnico': base_query.filter(tecnico_atual_id__isnull=True, status_ordem_servico=APROVADA).count()
             },
             'semanas': semanas_data,
+            'solucionadas': sum(contagens[status_os] for status_os in STATUS_FINALIZADOS),
+            'gargalos': {
+                'sem_triagem': contagens[ABERTA] + contagens[REABERTA],
+                'sem_tecnico': base_query.filter(tecnico_atual_id__isnull=True, status_ordem_servico__in=(APROVADA, ATRIBUIDA)).count(),
+                'aguardando_material': contagens[AGUARDANDO_MATERIAL],
+                'dependente_terceiro': contagens[AGUARDANDO_TERCEIRO],
+            },
         }
 
     @staticmethod
@@ -200,9 +225,12 @@ class RegraDashboardGerente(_RegraDashboardBase):
 
 class RegraDashboardGestor(_RegraDashboardBase):
     def _query_base(self, usuario) -> QuerySet:
-        return OrdemServico.objects.com_responsaveis().filter(
-            Q(gestor_atual_id=usuario.pk) | Q(status_ordem_servico=ABERTA) | Q(status_ordem_servico=REPROVADA)
-        )
+        return OrdemServico.objects.com_responsaveis().filter(_filtro_escopo_gestor(usuario, (REPROVADA,)))
+
+    def _tecnicos_permitidos(self, usuario):
+        from perfil.equipes import ids_tecnicos_da_equipe
+
+        return set(ids_tecnicos_da_equipe(usuario))
 
 
 class RegraDashboardTecnico(_RegraDashboardBase):

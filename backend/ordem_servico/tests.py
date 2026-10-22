@@ -31,7 +31,7 @@ def test_concluir_os_com_tag_patrimonio_nao_estoura_nameerror():
     ordem_servico = criar_os(
         localizacao,
         tecnico=tecnico,
-        status_ordem_servico="APROVADA",
+        status_ordem_servico="EM_EXECUCAO",
         descricao_servico="Ar-condicionado não liga.",
     )
 
@@ -41,12 +41,13 @@ def test_concluir_os_com_tag_patrimonio_nao_estoura_nameerror():
     resposta = client.patch(f"/ordem-servico/{ordem_servico.pk}/", {
         "status_ordem_servico": "CONCLUIDA",
         "observacao": f"Trocado o filtro. [PAT: {ativo.codigo_patrimonial}]",
+        "causa_raiz": "Falta de manutenção",
     })
 
     assert resposta.status_code == 200
 
     ativo.refresh_from_db()
-    assert ativo.dt_ultima_preventiva is not None
+    assert ativo.dt_ultima_preventiva is None
 
     ordem_servico.refresh_from_db()
     assert ordem_servico.status_ordem_servico == "CONCLUIDA"

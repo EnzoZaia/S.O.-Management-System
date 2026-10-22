@@ -53,7 +53,7 @@ def cenario(db):
 def _concluir_pelo_tecnico(cenario):
     resposta = _cliente(cenario["tecnico"]).patch(
         f"/ordem-servico/{cenario['os'].pk}/",
-        {"status_ordem_servico": "CONCLUIDA", "observacao": "Dreno desobstruído."},
+        {"status_ordem_servico": "CONCLUIDA", "observacao": "Dreno desobstruído.", "causa_raiz": "Desgaste natural"},
         format="json",
     )
     assert resposta.status_code == 200
@@ -283,7 +283,9 @@ def test_os_sem_gestor_reprovada_registra_alerta_sem_email(cenario, django_captu
         cenario["localizacao"], solicitante=cenario["solicitante"],
         status_ordem_servico="EM_EXECUCAO", descricao_servico="OS sem técnico nem gestor definidos.",
     )
-    OrdemServicoFacade().alterar_status(cenario["os"], cenario["gestor"], {"status_ordem_servico": "CONCLUIDA"})
+    OrdemServicoFacade().alterar_status(
+        cenario["os"], cenario["gestor"], {"status_ordem_servico": "CONCLUIDA", "causa_raiz": "Desgaste natural"}, "Serviço concluído no local.",
+    )
 
     with django_capture_on_commit_callbacks(execute=True):
         resposta = _cliente(cenario["solicitante"]).patch(
@@ -310,7 +312,9 @@ def test_dashboard_conta_aguardando_validacao(cenario):
 
 def test_patch_aceita_status_aguardando_validacao_e_trata_como_conclusao(cenario):
     resposta = _cliente(cenario["tecnico"]).patch(
-        f"/ordem-servico/{cenario['os'].pk}/", {"status_ordem_servico": "AGUARDANDO_VALIDACAO"}, format="json",
+        f"/ordem-servico/{cenario['os'].pk}/",
+        {"status_ordem_servico": "AGUARDANDO_VALIDACAO", "observacao": "Serviço executado no local.", "causa_raiz": "Mau uso"},
+        format="json",
     )
 
     assert resposta.status_code == 200

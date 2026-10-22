@@ -19,7 +19,8 @@ from usuario.serializers import (
     UsuarioMeusDadosSerializer,
     UsuarioSerializer,
 )
-from utils.permissions import IsGerente, usuario_tem_grupo
+from perfil.equipes import ids_tecnicos_da_equipe
+from utils.permissions import IsGerente, IsGerenteOuGestor, usuario_tem_grupo
 from utils.responses import resposta_sucesso, resposta_erro
 
 
@@ -43,7 +44,7 @@ class UsuarioListCreateView(generics.ListCreateAPIView):
     def get_permissions(self):
         if self.request.method == 'POST':
             return [AllowAny()]
-        return [IsAuthenticated(), IsGerente()]
+        return [IsAuthenticated(), IsGerenteOuGestor()]
 
     def get_throttles(self):
         if self.request.method == 'POST' and not self._pelo_gerente():
@@ -59,6 +60,8 @@ class UsuarioListCreateView(generics.ListCreateAPIView):
         ativo = _filtro_ativo(self.request.query_params.get('ativo'))
         if ativo is not None:
             queryset = queryset.exclude(status_conta=STATUS_CONTA_DESATIVADA) if ativo else queryset.filter(status_conta=STATUS_CONTA_DESATIVADA)
+        if not self._pelo_gerente():
+            queryset = queryset.filter(id_usuario__in=ids_tecnicos_da_equipe(self.request.user))
         return queryset
 
     def get_serializer_context(self):

@@ -17,7 +17,7 @@ PERFIL_POR_ID = {id_perfil: nome for nome, id_perfil in ID_POR_PERFIL.items()}
 MODELO_POR_PERFIL = {GERENTE: Gerente, GESTOR: Gestor, TECNICO: Tecnico, SOLICITANTE: Solicitante}
 RELACAO_POR_PERFIL = {GERENTE: 'perfil_gerente', GESTOR: 'perfil_gestor', TECNICO: 'perfil_tecnico', SOLICITANTE: 'perfil_solicitante'}
 
-AREA_ATUACAO_PADRAO = 'GERAIS'
+AREA_ATUACAO_PADRAO = 'TODAS'
 
 _TENTATIVAS_GERAR_IDENTIFICADOR = 20
 

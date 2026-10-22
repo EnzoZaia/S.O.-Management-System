@@ -41,7 +41,7 @@ def test_corretiva_e_preventiva_nascem_com_mesmos_defaults_estruturais():
         categoria_manutencao="REFRIGERACAO",
         prioridade_urgencia="URGENTE",
     )
-    preventiva = diretor.construir_preventiva_automatica(ativo)
+    preventiva = diretor.construir_preventiva_agrupada(localizacao, "Preventiva agrupada do Bloco A.")
 
     for ordem_servico in (corretiva, preventiva):
         assert ordem_servico.status_ordem_servico == "EM_TRIAGEM"
@@ -55,33 +55,15 @@ def test_corretiva_e_preventiva_nascem_com_mesmos_defaults_estruturais():
 
 
 @pytest.mark.django_db
-def test_construir_preventiva_automatica_atualiza_os_existente_em_vez_de_duplicar():
+def test_construir_preventiva_agrupada_nao_vincula_um_unico_ativo():
     localizacao = _criar_localizacao()
-    ativo = _criar_ativo(localizacao, dt_proxima_preventiva=date(2026, 10, 1))
 
-    diretor = OrdemServicoDiretor()
+    ordem_servico = OrdemServicoDiretor().construir_preventiva_agrupada(localizacao, "Preventiva agrupada do Bloco A.")
 
-    primeira = diretor.construir_preventiva_automatica(ativo)
-
-    ativo.dt_proxima_preventiva = date(2026, 11, 15)
-    ativo.save()
-
-    segunda = diretor.construir_preventiva_automatica(ativo)
-
-    assert primeira.pk == segunda.pk
-    assert OrdemServico.objects.filter(ativo=ativo, tipo_manutencao="PREVENTIVA").count() == 1
-    assert "15/11/2026" in segunda.descricao_servico
-
-
-@pytest.mark.django_db
-def test_construir_preventiva_automatica_sem_proxima_data_nao_cria_os():
-    localizacao = _criar_localizacao()
-    ativo = _criar_ativo(localizacao, dt_proxima_preventiva=None)
-
-    resultado = OrdemServicoDiretor().construir_preventiva_automatica(ativo)
-
-    assert resultado is None
-    assert not OrdemServico.objects.filter(ativo=ativo).exists()
+    assert ordem_servico.pk is not None
+    assert ordem_servico.ativo_id is None
+    assert ordem_servico.tipo_manutencao == "PREVENTIVA"
+    assert ordem_servico.descricao_servico == "Preventiva agrupada do Bloco A."
 
 
 @pytest.mark.django_db

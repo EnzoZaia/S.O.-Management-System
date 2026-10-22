@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 
 from django.utils import timezone
 
-from ordem_servico.constantes import APROVADA, EM_TRIAGEM, PRIORIDADE_NORMAL, TIPO_CORRETIVA, TIPO_PREVENTIVA
+from ordem_servico.constantes import EM_TRIAGEM, PRIORIDADE_NORMAL, TIPO_CORRETIVA, TIPO_PREVENTIVA
 from ordem_servico.models import OrdemServico
 
 
@@ -98,38 +98,13 @@ class OrdemServicoDiretor:
         ordem_servico.save()
         return ordem_servico
 
-    def construir_preventiva_automatica(self, ativo) -> OrdemServico | None:
-        if not ativo.dt_proxima_preventiva:
-            return None
-
-        descricao = (
-            f"Manutenção preventiva programada automaticamente para o ativo "
-            f"{ativo.codigo_patrimonial or ativo.id_ativo}, prevista para "
-            f"{ativo.dt_proxima_preventiva.strftime('%d/%m/%Y')}."
-        )
-
-        os_montada = (
+    def construir_preventiva_agrupada(self, localizacao, descricao) -> OrdemServico:
+        ordem_servico = (
             self._builder_factory()
-            .com_localizacao(ativo.localizacao)
-            .com_ativo(ativo)
+            .com_localizacao(localizacao)
             .como_preventiva()
             .com_descricao(descricao)
             .construir()
         )
-
-        os_existente = OrdemServico.objects.filter(
-            ativo=ativo,
-            tipo_manutencao=TIPO_PREVENTIVA,
-            status_ordem_servico__in=[EM_TRIAGEM, APROVADA],
-        ).first()
-
-        if os_existente:
-            os_existente.localizacao = os_montada.localizacao
-            os_existente.categoria_manutencao = os_montada.categoria_manutencao
-            os_existente.prioridade_urgencia = os_montada.prioridade_urgencia
-            os_existente.descricao_servico = os_montada.descricao_servico
-            os_existente.save()
-            return os_existente
-
-        os_montada.save()
-        return os_montada
+        ordem_servico.save()
+        return ordem_servico

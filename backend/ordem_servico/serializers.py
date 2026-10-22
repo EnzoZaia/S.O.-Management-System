@@ -4,12 +4,15 @@ from ordem_servico.constantes import (
     PRIORIDADE_DA_API,
     PRIORIDADE_PARA_API,
     PRIORIDADES_VALIDAS,
+    STATUS_ATIVOS,
     STATUS_VALIDOS,
+    TIPO_CORRETIVA,
     TIPOS_MANUTENCAO,
     status_da_api,
     status_para_api,
 )
 from ativo.models import Ativo
+from ativo.services import alerta_preventiva_proxima
 from ordem_servico.fachada import OrdemServicoFacade
 from ordem_servico.models import OrdemServico
 
@@ -45,6 +48,7 @@ class OrdemServicoSerializer(serializers.ModelSerializer):
     localizacao_nome = serializers.CharField(source='localizacao.desc_localizacao', read_only=True, default="")
     solicitante_nome = serializers.CharField(source='solicitante.nome', read_only=True, default="Totem (Anônimo)")
     tecnico = serializers.IntegerField(source='tecnico_id', read_only=True, default=None)
+    tecnico_id = serializers.IntegerField(read_only=True, default=None)
     tecnico_nome = serializers.CharField(read_only=True, default=None)
     gestor = serializers.IntegerField(source='gestor_id', read_only=True, default=None)
     gestor_nome = serializers.CharField(read_only=True, default=None)
@@ -54,6 +58,7 @@ class OrdemServicoSerializer(serializers.ModelSerializer):
     ativo_proxima_preventiva = serializers.DateField(source='ativo.dt_proxima_preventiva', read_only=True, default=None)
     vinculo_presenciei = serializers.SerializerMethodField()
     total_afetados = serializers.IntegerField(read_only=True)
+    alerta_preventiva = serializers.SerializerMethodField()
 
     class Meta:
         model = OrdemServico
@@ -79,6 +84,11 @@ class OrdemServicoSerializer(serializers.ModelSerializer):
         if isinstance(self.context, dict):
             self.context['_ids_os_presenciadas'] = ids
         return ids
+
+    def get_alerta_preventiva(self, obj):
+        if obj.tipo_manutencao != TIPO_CORRETIVA or not obj.ativo_id or obj.status_ordem_servico not in STATUS_ATIVOS:
+            return None
+        return alerta_preventiva_proxima(obj.ativo, obj.dt_abertura.date() if obj.dt_abertura else None)
 
     def get_ativo_nome(self, obj):
         if obj.ativo:

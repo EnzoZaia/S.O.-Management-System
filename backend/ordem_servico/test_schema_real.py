@@ -182,7 +182,7 @@ def test_avaliacao_por_participante_que_nao_aprovou_grava_linha_propria_sem_resu
     ordem_servico = criar_os(localizacao, solicitante=solicitante, tecnico=tecnico, status_ordem_servico="EM_EXECUCAO")
     OsParticipante.objects.create(ordem_servico=ordem_servico, usuario=participante, dt_vinculo=timezone.now())
     fachada = OrdemServicoFacade()
-    fachada.alterar_status(ordem_servico, tecnico, {"status_ordem_servico": "CONCLUIDA"})
+    fachada.alterar_status(ordem_servico, tecnico, {"status_ordem_servico": "CONCLUIDA", "causa_raiz": "Desgaste natural"}, "Serviço concluído no local.")
     fachada.validar(ordem_servico, solicitante, aprovada=True)
 
     resposta = _cliente(participante).post(f"/ordem-servico/{ordem_servico.pk}/avaliar/", {"nota": 4}, format="json")

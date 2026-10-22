@@ -1,7 +1,9 @@
+from django.shortcuts import get_object_or_404
 from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated
 
 from ativo.models import Ativo
+from ativo.saude import saude_dos_ativos
 from ativo.serializers import AtivoSerializer
 from utils.responses import resposta_sucesso, resposta_erro
 from utils.permissions import IsGerente, IsGestor,IsGerenteOuGestorOuTecnico
@@ -101,3 +103,27 @@ class AtivoHistoricoView(APIView):
 
         except Exception as e:
             return resposta_erro(f"Erro ao buscar histórico: {str(e)}", None)
+
+
+class AtivoSaudeListView(APIView):
+    permission_classes = [IsAuthenticated, IsGerenteOuGestorOuTecnico]
+
+    def get(self, request):
+        ativos = Ativo.objects.select_related('localizacao').order_by('id_ativo')
+        predio = request.query_params.get('predio')
+        if predio:
+            ativos = ativos.filter(localizacao__predio_id=predio)
+        resultado = saude_dos_ativos(ativos)
+        classificacao = request.query_params.get('classificacao')
+        if classificacao:
+            resultado = [item for item in resultado if item['classificacao'] == classificacao.upper()]
+        resultado.sort(key=lambda item: (item['nota'], item['codigo_patrimonial']))
+        return resposta_sucesso("Saúde dos ativos calculada com sucesso.", resultado)
+
+
+class AtivoSaudeView(APIView):
+    permission_classes = [IsAuthenticated, IsGerenteOuGestorOuTecnico]
+
+    def get(self, request, pk):
+        ativo = get_object_or_404(Ativo, pk=pk)
+        return resposta_sucesso("Saúde do ativo calculada com sucesso.", saude_dos_ativos([ativo])[0])

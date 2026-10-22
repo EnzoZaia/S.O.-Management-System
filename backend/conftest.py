@@ -24,6 +24,10 @@ APPS_COM_TABELAS_EXTERNAS = [
     "os_participante",
     "validacao",
     "auditoria_usuario",
+    "notificacao",
+    "evidencia_os",
+    "preventiva_grupo",
+    "inteligencia",
 ]
 
 

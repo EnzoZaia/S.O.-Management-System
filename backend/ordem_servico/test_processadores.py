@@ -1,6 +1,7 @@
 from datetime import date
 
 import pytest
+from django.utils import timezone
 
 from ativo.models import Ativo
 from localizacao.models import Localizacao
@@ -47,7 +48,7 @@ def test_fabricas_produzem_o_processador_correto():
 
 
 @pytest.mark.django_db
-def test_processador_corretiva_concluida_com_tag_vincula_ativo_e_aguarda_validacao():
+def test_processador_corretiva_concluida_com_tag_vincula_ativo_sem_contar_como_preventiva():
     localizacao = _criar_localizacao()
     ativo = _criar_ativo(localizacao)
     solicitante = Usuario.objects.create(nome="Solicitante", email="sol1@fho.edu.br", senha_hash="x")
@@ -71,9 +72,8 @@ def test_processador_corretiva_concluida_com_tag_vincula_ativo_e_aguarda_validac
     assert ordem_servico.status_ordem_servico == "AGUARDANDO_VALIDACAO"
     assert ordem_servico.dt_conclusao is None
     assert ordem_servico.ativo_id == ativo.pk
-    assert ativo.dt_ultima_preventiva is not None
-    assert ativo.dt_proxima_preventiva is not None
-    assert OrdemServico.objects.filter(ativo=ativo, tipo_manutencao="PREVENTIVA").exists()
+    assert ativo.dt_ultima_preventiva is None
+    assert not OrdemServico.objects.filter(ativo=ativo, tipo_manutencao="PREVENTIVA").exists()
 
 
 @pytest.mark.django_db
@@ -104,15 +104,20 @@ def test_processador_preventiva_concluida_e_auto_encerrada():
     localizacao = _criar_localizacao()
     ativo = _criar_ativo(localizacao, dt_proxima_preventiva=date(2026, 10, 1))
 
-    ordem_servico = OrdemServicoDiretor().construir_preventiva_automatica(ativo)
-    ordem_servico.status_ordem_servico = "CONCLUIDA"
+    ordem_servico = OrdemServico.objects.create(
+        localizacao=localizacao, ativo=ativo, tipo_manutencao="PREVENTIVA", status_ordem_servico="CONCLUIDA",
+        dt_abertura=timezone.now(), descricao_servico="Preventiva individual.",
+    )
 
     processador = PreventivaFactory().criar_processador()
     processador.finalizar(ordem_servico, "Preventiva realizada.")
     ordem_servico.save()
 
     ordem_servico.refresh_from_db()
+    ativo.refresh_from_db()
     assert ordem_servico.status_ordem_servico == "ENCERRADA"
+    assert ativo.dt_ultima_preventiva == timezone.localdate()
+    assert ativo.dt_proxima_preventiva > ativo.dt_ultima_preventiva
     assert ordem_servico.dt_conclusao is not None
 
 

@@ -7,7 +7,6 @@ from django.utils import timezone
 from ativo.models import Ativo
 from historico.models import Historico
 from localizacao.models import Localizacao
-from ordem_servico.builders import OrdemServicoDiretor
 from ordem_servico.models import OrdemServico
 from ordem_servico.processadores import (
     ComHistoricoDecorator,
@@ -117,8 +116,7 @@ def test_com_historico_registra_status_efetivo_quando_preventiva_vira_encerrada(
         periodicidade_preventiva_dias=90,
         dt_proxima_preventiva=date(2026, 10, 1),
     )
-    ordem_servico = OrdemServicoDiretor().construir_preventiva_automatica(ativo)
-    ordem_servico.status_ordem_servico = "CONCLUIDA"
+    ordem_servico = _criar_os(localizacao, ativo=ativo, tipo_manutencao="PREVENTIVA", status_ordem_servico="CONCLUIDA")
 
     processador = ComHistoricoDecorator(
         PreventivaFactory().criar_processador(), usuario=_criar_usuario(), status_anterior="APROVADA"

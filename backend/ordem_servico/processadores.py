@@ -22,7 +22,7 @@ from abc import ABC, abstractmethod
 from django.utils import timezone
 
 from ativo.models import Ativo
-from ativo.services import calcular_proxima_preventiva, criar_ou_atualizar_os_preventiva_para_ativo
+from ativo.services import registrar_preventiva_concluida
 from ordem_servico.constantes import (
     AGUARDANDO_VALIDACAO,
     CONCLUIDA,
@@ -56,7 +56,6 @@ class _ProcessadorOrdemServicoBase(ProcessadorOrdemServico):
 
     def _registrar_execucao(self, ordem_servico: OrdemServico, motivo_tecnico: str) -> None:
         self._vincular_ativo_pela_observacao(ordem_servico, motivo_tecnico)
-        self._atualizar_manutencao_do_ativo(ordem_servico)
 
     @staticmethod
     def _vincular_ativo_pela_observacao(ordem_servico: OrdemServico, motivo_tecnico: str) -> None:
@@ -74,19 +73,7 @@ class _ProcessadorOrdemServicoBase(ProcessadorOrdemServico):
         if not ordem_servico.ativo:
             return
 
-        ativo = ordem_servico.ativo
-        ativo.dt_ultima_preventiva = timezone.now().date()
-
-        if ativo.periodicidade_preventiva_dias:
-            ativo.dt_proxima_preventiva = calcular_proxima_preventiva(
-                ativo.dt_ultima_preventiva,
-                ativo.periodicidade_preventiva_dias,
-                ativo.localizacao,
-                ativo,
-            )
-
-        ativo.save()
-        criar_ou_atualizar_os_preventiva_para_ativo(ativo)
+        registrar_preventiva_concluida(ordem_servico.ativo, timezone.localdate())
 
 
 _STATUS_DE_CONCLUSAO_PELO_TECNICO = (CONCLUIDA, AGUARDANDO_VALIDACAO)
@@ -119,6 +106,7 @@ class ProcessadorPreventiva(_ProcessadorOrdemServicoBase):
     def finalizar(self, ordem_servico: OrdemServico, motivo_tecnico: str) -> None:
         if ordem_servico.status_ordem_servico in _STATUS_DE_CONCLUSAO_PELO_TECNICO:
             self._concluir(ordem_servico, motivo_tecnico)
+            self._atualizar_manutencao_do_ativo(ordem_servico)
             ordem_servico.status_ordem_servico = ENCERRADA
 
 

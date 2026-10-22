@@ -23,11 +23,19 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from ativo.models import Ativo
+from ativo.services import alerta_preventiva_proxima
+from notificacao.services import TIPO_OS_ATRIBUIDA, TIPO_OS_REATRIBUIDA, notificar
+from perfil.equipes import ids_tecnicos_da_equipe, tecnico_atende
 from ordem_servico.builders import OrdemServicoDiretor
 from ordem_servico.constantes import (
     ABERTA,
+    AGUARDANDO_MATERIAL,
+    AGUARDANDO_TERCEIRO,
     AGUARDANDO_VALIDACAO,
     APROVADA,
+    ATRIBUIDA,
+    PAUSADA,
+    REABERTA,
     CANCELADA,
     CONCLUIDA,
     EM_EXECUCAO,
@@ -36,6 +44,8 @@ from ordem_servico.constantes import (
     status_para_api,
 )
 from ordem_servico.models import OrdemServico
+from ordem_servico.transicoes import ContextoTransicao, RegraTransicaoError, ValidadorTransicao
+from usuario.models import Usuario
 from ordem_servico.participacao import corretiva_ativa_do_ativo, os_esta_ativa, usuario_ja_vinculado
 from os_participante.models import OsParticipante
 from ordem_servico.processadores import (
@@ -104,9 +114,13 @@ class OrdemServicoFacade:
     )
     MENSAGEM_OS_INATIVA = "Esta ordem não está mais em andamento (status atual: {status}); não é possível alterar participantes."
 
-    def __init__(self, diretor=None, resolver_fabrica_processador=obter_fabrica_processador) -> None:
+    MENSAGEM_REATRIBUICAO_SEM_JUSTIFICATIVA = "Informe a justificativa da reatribuição (mínimo de 10 caracteres)."
+    STATUS_QUE_ACEITAM_ATRIBUICAO = (ABERTA, REABERTA, APROVADA, ATRIBUIDA, EM_EXECUCAO, AGUARDANDO_MATERIAL, AGUARDANDO_TERCEIRO, PAUSADA)
+
+    def __init__(self, diretor=None, resolver_fabrica_processador=obter_fabrica_processador, validador_transicao=None) -> None:
         self._diretor = diretor or OrdemServicoDiretor()
         self._resolver_fabrica_processador = resolver_fabrica_processador
+        self._validador_transicao = validador_transicao or ValidadorTransicao()
 
     @staticmethod
     def esta_em_status_final(ordem_servico: OrdemServico) -> bool:
@@ -162,6 +176,38 @@ class OrdemServicoFacade:
             usuario,
             f"Ordem de serviço aberta por {nome_solicitante}. Status inicial: {status_para_api(ordem_servico.status_ordem_servico)}.",
         )
+
+        alerta = alerta_preventiva_proxima(ordem_servico.ativo, ordem_servico.dt_abertura.date()) if ordem_servico.ativo_id else None
+        if alerta is not None:
+            registrar_historico(ordem_servico, usuario, f"Alerta de proximidade de preventiva: {alerta['mensagem']}")
+        return ordem_servico
+
+    @transaction.atomic
+    def abrir_preventiva_agrupada(self, usuario, localizacao, categoria_manutencao, descricao) -> OrdemServico:
+        ordem_servico = self._diretor.construir_preventiva_agrupada(localizacao, descricao)
+        if categoria_manutencao and ordem_servico.categoria_manutencao != categoria_manutencao:
+            ordem_servico.categoria_manutencao = categoria_manutencao
+            ordem_servico.save(update_fields=["categoria_manutencao"])
+        registrar_historico(
+            ordem_servico,
+            usuario,
+            f"Ordem de serviço preventiva agrupada aberta por {usuario.nome}. Status inicial: {status_para_api(ordem_servico.status_ordem_servico)}.",
+        )
+        return ordem_servico
+
+    @transaction.atomic
+    def mover_status_por_regra(self, ordem_servico: OrdemServico, usuario, novo_status: str, detalhes: str = "") -> OrdemServico:
+        status_anterior = ordem_servico.status_ordem_servico
+        if status_anterior == novo_status:
+            return ordem_servico
+        definir_usuario_da_sessao(usuario)
+        ordem_servico.status_ordem_servico = novo_status
+        campos = ["status_ordem_servico"]
+        if novo_status in STATUS_FINAIS and ordem_servico.dt_conclusao is None:
+            ordem_servico.dt_conclusao = timezone.now()
+            campos.append("dt_conclusao")
+        ordem_servico.save(update_fields=campos)
+        registrar_mudanca_status(ordem_servico, usuario, status_anterior, novo_status, detalhes)
         return ordem_servico
 
     @transaction.atomic
@@ -176,6 +222,16 @@ class OrdemServicoFacade:
         status_anterior = ordem_servico.status_ordem_servico
         novo_status = dados_validados.get("status_ordem_servico")
 
+        if novo_status and novo_status != status_anterior:
+            self._validador_transicao.validar(ContextoTransicao(
+                ordem_servico=ordem_servico,
+                usuario=usuario,
+                status_anterior=status_anterior,
+                novo_status=novo_status,
+                dados=dados_validados,
+                observacao=motivo_tecnico,
+            ))
+
         for campo, valor in dados_validados.items():
             setattr(ordem_servico, campo, valor)
 
@@ -189,15 +245,44 @@ class OrdemServicoFacade:
         return ordem_servico
 
     @transaction.atomic
-    def atribuir_tecnico(self, ordem_servico: OrdemServico, tecnico, responsavel) -> OrdemServico:
+    def atribuir_tecnico(self, ordem_servico: OrdemServico, tecnico, responsavel, justificativa: str | None = None) -> OrdemServico:
         """Atribui o técnico; o responsável vira gestor da OS se ela ainda não tiver um, e ABERTA passa a APROVADA."""
         if not usuario_tem_grupo(tecnico, "TECNICO"):
             raise TecnicoInvalidoError("Usuário não é técnico.")
 
+        if not tecnico.ativo or not tecnico.email_confirmado:
+            raise TecnicoInvalidoError("O técnico informado não está ativo.")
+
+        if ordem_servico.status_ordem_servico not in self.STATUS_QUE_ACEITAM_ATRIBUICAO:
+            raise OrdemServicoStatusInvalidoError(
+                f"Não é possível atribuir técnico nesta ordem (status atual: {status_para_api(ordem_servico.status_ordem_servico)})."
+            )
+
+        if not usuario_tem_grupo(responsavel, "GERENTE"):
+            if tecnico.pk not in ids_tecnicos_da_equipe(responsavel):
+                raise TecnicoInvalidoError("O técnico informado não pertence à sua equipe.")
+            if not tecnico_atende(tecnico, ordem_servico.categoria_manutencao):
+                raise TecnicoInvalidoError("A área de atuação do técnico não atende a categoria desta ordem.")
+
+        anterior_id = ordem_servico.tecnico_id
+        anterior_nome = ordem_servico.tecnico_nome
+        justificativa = (justificativa or "").strip()
+
+        if anterior_id == tecnico.pk:
+            raise TecnicoInvalidoError(f"{tecnico.nome} já é o técnico responsável por esta ordem.")
+
+        if anterior_id and len(justificativa) < 10:
+            raise RegraTransicaoError(self.MENSAGEM_REATRIBUICAO_SEM_JUSTIFICATIVA, {"justificativa": [self.MENSAGEM_REATRIBUICAO_SEM_JUSTIFICATIVA]})
+
         gestor = ordem_servico.gestor or responsavel
 
         definir_usuario_da_sessao(responsavel)
-        registrar_atribuicao(ordem_servico, gestor, tecnico)
+        if anterior_id:
+            descricao = f"Técnico reatribuído: {anterior_nome} -> {tecnico.nome}. Justificativa: {justificativa}"
+        else:
+            descricao = f"Técnico atribuído: {tecnico.nome}"
+        registrar_atribuicao(ordem_servico, gestor, tecnico, descricao)
+        self._notificar_atribuicao(ordem_servico, tecnico, anterior_id, justificativa)
 
         if ordem_servico.status_ordem_servico == ABERTA:
             status_anterior = ordem_servico.status_ordem_servico
@@ -207,6 +292,23 @@ class OrdemServicoFacade:
 
         ordem_servico.definir_responsaveis(tecnico, gestor)
         return ordem_servico
+
+    @staticmethod
+    def _notificar_atribuicao(ordem_servico: OrdemServico, tecnico, anterior_id, justificativa: str) -> None:
+        resumo = (ordem_servico.descricao_servico or "")[:120]
+        notificar(
+            tecnico, TIPO_OS_ATRIBUIDA, f"OS #{ordem_servico.pk} atribuída a você",
+            f"A ordem de serviço #{ordem_servico.pk} foi atribuída a você. Problema: {resumo}",
+            ordem_servico,
+        )
+        if anterior_id:
+            anterior = Usuario.objects.filter(pk=anterior_id).first()
+            if anterior is not None:
+                notificar(
+                    anterior, TIPO_OS_REATRIBUIDA, f"OS #{ordem_servico.pk} reatribuída",
+                    f"A ordem de serviço #{ordem_servico.pk} foi reatribuída para {tecnico.nome}. Justificativa: {justificativa}",
+                    ordem_servico,
+                )
 
     @transaction.atomic
     def cancelar(self, ordem_servico: OrdemServico, usuario) -> OrdemServico:

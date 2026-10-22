@@ -1,53 +1,33 @@
 from rest_framework import serializers
 from ativo.models import Ativo
-from ativo.services import calcular_proxima_preventiva, criar_ou_atualizar_os_preventiva_para_ativo
+from ativo.services import intervalo_preventiva_dias, recalcular_programacao
 
 class AtivoSerializer(serializers.ModelSerializer):
+    periodicidade_preventiva_dias = serializers.IntegerField(min_value=1, required=False)
+
     class Meta:
         model = Ativo
         fields = '__all__'
         read_only_fields = ['id_ativo', 'dt_proxima_preventiva']
 
     def create(self, validated_data):
-        dt_ultima = validated_data.get('dt_ultima_preventiva')
-        periodicidade = validated_data.get('periodicidade_preventiva_dias')
-
-        if dt_ultima and periodicidade:
-            validated_data['dt_proxima_preventiva'] = calcular_proxima_preventiva(
-                dt_ultima,
-                periodicidade,
-                validated_data.get('localizacao')
+        if not validated_data.get('periodicidade_preventiva_dias'):
+            localizacao = validated_data.get('localizacao')
+            validated_data['periodicidade_preventiva_dias'] = intervalo_preventiva_dias(
+                validated_data.get('tipo_ativo'), localizacao.predio_id if localizacao else None,
             )
 
-        ativo = super().create(validated_data)
-
-        if ativo.dt_proxima_preventiva:
-            criar_ou_atualizar_os_preventiva_para_ativo(ativo)
-
+        ativo = Ativo(**validated_data)
+        recalcular_programacao(ativo)
+        ativo.save()
         return ativo
 
     def update(self, instance, validated_data):
-        instance.periodicidade_preventiva_dias = validated_data.get(
-            'periodicidade_preventiva_dias',
-            instance.periodicidade_preventiva_dias
-        )
+        for campo, valor in validated_data.items():
+            setattr(instance, campo, valor)
 
-        instance.dt_ultima_preventiva = validated_data.get(
-            'dt_ultima_preventiva',
-            instance.dt_ultima_preventiva
-        )
-
-        if instance.dt_ultima_preventiva and instance.periodicidade_preventiva_dias:
-            instance.dt_proxima_preventiva = calcular_proxima_preventiva(
-                instance.dt_ultima_preventiva,
-                instance.periodicidade_preventiva_dias,
-                instance.localizacao,
-                instance
-            )
+        if 'periodicidade_preventiva_dias' in validated_data or 'dt_ultima_preventiva' in validated_data or not instance.dt_proxima_preventiva:
+            recalcular_programacao(instance)
 
         instance.save()
-
-        if instance.dt_proxima_preventiva:
-            criar_ou_atualizar_os_preventiva_para_ativo(instance)
-
         return instance

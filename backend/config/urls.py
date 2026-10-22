@@ -28,12 +28,19 @@ from localizacao.views import LocalizacaoListCreateView, LocalizacaoRetrieveUpda
 from ordem_servico.views import (
     OrdemServicoListCreateView, OrdemServicoRetrieveUpdateDestroyView, OrdemServicoAtribuirTecnicoView, DashboardIndicadoresView,
     OrdemServicoValidarView, OrdemServicoValidacaoView, OrdemServicoAvaliarView, OrdemServicoAvaliacaoView,
-    OrdemServicoVerificarDuplicidadeView, OrdemServicoPresencieiView,
+    OrdemServicoVerificarDuplicidadeView, OrdemServicoPresencieiView, OrdemServicoEvidenciasView,
+    IndicadoresGerenciaisView,
 )
+from preventiva_grupo.views import (
+    PreventivaAgrupadaListCreateView, PreventivaAgrupadaResultadosView, PreventivaAgrupadaChecklistView,
+    PreventivaAgrupadaChecklistAtivoView, PreventivaAgrupadaGuiaView,
+)
+from notificacao.views import NotificacaoListView, NotificacaoLidaView
+from inteligencia.views import AssistenteTecnicoView, TechOrderIntelligenceView
 from predio.views import PredioListCreateView, PredioRetrieveUpdateDestroyView
 from authentication.views import TokenObtainPairView, TokenRefreshView
 from rest_framework_simplejwt.views import TokenVerifyView
-from ativo.views import AtivoListCreateView, AtivoRetrieveUpdateDestroyView, AtivoHistoricoView
+from ativo.views import AtivoListCreateView, AtivoRetrieveUpdateDestroyView, AtivoHistoricoView, AtivoSaudeListView, AtivoSaudeView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -58,12 +65,23 @@ urlpatterns = [
     path('ordem-servico/', OrdemServicoListCreateView.as_view(), name='ordem-servico-list-create'),
     path('ordem-servico/<int:pk>/', OrdemServicoRetrieveUpdateDestroyView.as_view(), name='ordem-servico-detail-view'),
     path('ordem-servico/<int:pk>/atribuir-tecnico/', OrdemServicoAtribuirTecnicoView.as_view(), name='ordem-servico-atribuir-tecnico'),
+    path('ordem-servico/preventivas-agrupadas/', PreventivaAgrupadaListCreateView.as_view(), name='preventivas-agrupadas'),
+    path('ordem-servico/preventivas-agrupadas/<int:pk>/resultados/', PreventivaAgrupadaResultadosView.as_view(), name='preventivas-agrupadas-resultados'),
+    path('ordem-servico/preventivas-agrupadas/<int:pk>/checklist/', PreventivaAgrupadaChecklistView.as_view(), name='preventivas-agrupadas-checklist'),
+    path('ordem-servico/preventivas-agrupadas/<int:pk>/ativos/<int:ativo>/checklist/', PreventivaAgrupadaChecklistAtivoView.as_view(), name='preventivas-agrupadas-checklist-ativo'),
+    path('ordem-servico/preventivas-agrupadas/<int:pk>/guia/', PreventivaAgrupadaGuiaView.as_view(), name='preventivas-agrupadas-guia'),
+    path('ordem-servico/<int:pk>/evidencias/', OrdemServicoEvidenciasView.as_view(), name='ordem-servico-evidencias'),
+    path('ordem-servico/<int:pk>/assistente/', AssistenteTecnicoView.as_view(), name='ordem-servico-assistente'),
+    path('indicadores/intelligence/', TechOrderIntelligenceView.as_view(), name='techorder-intelligence'),
+    path('notificacao/', NotificacaoListView.as_view(), name='notificacao-list'),
+    path('notificacao/<int:pk>/lida/', NotificacaoLidaView.as_view(), name='notificacao-lida'),
     path('ordem-servico/verificar-duplicidade/', OrdemServicoVerificarDuplicidadeView.as_view(), name='ordem-servico-verificar-duplicidade'),
     path('ordem-servico/<int:pk>/presenciei/', OrdemServicoPresencieiView.as_view(), name='ordem-servico-presenciei'),
     path('ordem-servico/<int:pk>/validar/', OrdemServicoValidarView.as_view(), name='ordem-servico-validar'),
     path('ordem-servico/<int:pk>/validacao/', OrdemServicoValidacaoView.as_view(), name='ordem-servico-validacao'),
     path('ordem-servico/<int:pk>/avaliar/', OrdemServicoAvaliarView.as_view(), name='ordem-servico-avaliar'),
     path('ordem-servico/<int:pk>/avaliacao/', OrdemServicoAvaliacaoView.as_view(), name='ordem-servico-avaliacao'),
+    path('ordem-servico/indicadores-gerenciais/', IndicadoresGerenciaisView.as_view(), name='indicadores-gerenciais'),
     path('ordem-servico/dashboard/indicadores/', DashboardIndicadoresView.as_view(), name='dashboard-indicadores'),
 
     path('predio/', PredioListCreateView.as_view(), name='predio-list-create'),
@@ -76,6 +94,8 @@ urlpatterns = [
     path('ativo/', AtivoListCreateView.as_view(), name='ativo-list-create'),
     path('ativo/<int:pk>/', AtivoRetrieveUpdateDestroyView.as_view(), name='ativo-detail-view'),
 
+    path('ativo/saude/', AtivoSaudeListView.as_view(), name='ativo-saude-list'),
+    path('ativo/<int:pk>/saude/', AtivoSaudeView.as_view(), name='ativo-saude'),
     path('ativo/<int:pk>/historico/', AtivoHistoricoView.as_view(), name='ativo-historico'),
 ]
 
