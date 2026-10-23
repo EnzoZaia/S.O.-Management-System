@@ -22,10 +22,19 @@
       <button @click="router.push('/dashboard-gerente/indicadores')"
         :class="[
           'flex items-center gap-4 px-3 py-3 rounded-xl cursor-pointer transition-all duration-200 group',
-          route.path.includes('indicadores') ? 'bg-blue-600/50 text-white font-semibold shadow-inner' : 'text-blue-200 hover:bg-blue-800/50 hover:text-white'
+          route.path.includes('indicadores') && !route.path.includes('indicadores-globais') ? 'bg-blue-600/50 text-white font-semibold shadow-inner' : 'text-blue-200 hover:bg-blue-800/50 hover:text-white'
         ]">
         <span class="text-xl w-8 text-center shrink-0">📊</span>
         <span class="text-sm whitespace-nowrap transition-all duration-300" :class="isExpanded ? 'opacity-100' : 'opacity-0 w-0'">Indicadores</span>
+      </button>
+
+      <button @click="router.push('/dashboard-gerente/indicadores-globais')"
+        :class="[
+          'flex items-center gap-4 px-3 py-3 rounded-xl cursor-pointer transition-all duration-200 group',
+          route.path.includes('indicadores-globais') ? 'bg-blue-600/50 text-white font-semibold shadow-inner' : 'text-blue-200 hover:bg-blue-800/50 hover:text-white'
+        ]">
+        <span class="text-xl w-8 text-center shrink-0">🌐</span>
+        <span class="text-sm whitespace-nowrap transition-all duration-300" :class="isExpanded ? 'opacity-100' : 'opacity-0 w-0'">Indicadores Globais</span>
       </button>
 
       <button @click="router.push('/dashboard-gerente/funcionarios')"
