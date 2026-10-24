@@ -95,7 +95,7 @@
             </td>
             <td class="p-4 text-sm text-gray-600 truncate max-w-[200px]">{{ os.predio_nome || 'N/I' }} - {{ os.localizacao_nome || 'N/I' }}</td>
             <td class="p-4">
-              <div v-if="os.tipo_manutencao === 'PREVENTIVA'">
+              <div v-if="os.tipo_manutencao === 'PREVENTIVA' && os.ativo_patrimonio">
                 <p class="text-sm font-bold text-gray-800 flex items-center gap-1">
                   Inspeção: {{ os.ativo_nome || 'Equipamento' }}
                   <span class="text-[10px] bg-purple-100 text-purple-700 font-bold px-1.5 py-0.5 rounded ml-1 border border-purple-200">PAT: {{ os.ativo_patrimonio || 'N/I' }}</span>

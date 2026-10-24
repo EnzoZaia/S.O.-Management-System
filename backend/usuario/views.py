@@ -9,6 +9,7 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from auditoria_usuario.models import AuditoriaUsuario
+from authentication.authentication import OptionalJWTAuthentication
 from auditoria_usuario.serializers import AuditoriaUsuarioSerializer
 from perfil import services as perfis
 from usuario import services
@@ -45,6 +46,12 @@ class UsuarioListCreateView(generics.ListCreateAPIView):
         if self.request.method == 'POST':
             return [AllowAny()]
         return [IsAuthenticated(), IsGerenteOuGestor()]
+
+    def get_authenticators(self):
+        # Cadastro público: um token antigo salvo no navegador não pode bloquear o POST.
+        if self.request.method == 'POST':
+            return [OptionalJWTAuthentication()]
+        return super().get_authenticators()
 
     def get_throttles(self):
         if self.request.method == 'POST' and not self._pelo_gerente():

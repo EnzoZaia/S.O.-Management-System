@@ -191,7 +191,7 @@ async function tratarErro(e: unknown) {
   }
   const { titulo, texto } = MENSAGENS[e.info.tipo]
   await Swal.fire({
-    title: titulo, text: e.info.tipo === 'GENERICO' ? e.info.mensagem || texto : texto,
+    title: titulo, text: e.info.tipo === 'INDISPONIVEL' ? texto : e.info.mensagem || texto,
     icon: e.info.tipo === 'GENERICO' ? 'error' : 'info', confirmButtonColor: '#2563eb',
   })
   if (e.info.tipo === 'STATUS_INVALIDO' || e.info.tipo === 'CHECKLIST_INCOMPLETO') {
@@ -229,7 +229,9 @@ async function salvar(a: AtivoChecklist) {
 async function finalizar(a: AtivoChecklist, resultado: 'CONCLUIDO' | 'NAO_CONCLUIDO', motivo?: string) {
   salvando.value = a.ativo
   try {
-    await salvarChecklistAtivo(props.idOrdem, a.ativo, montarItensEnvio(a.itens))
+    // Ativo "não concluído" pode não ter nenhum item respondido; o backend recusa salvar lista vazia.
+    const itensEnvio = montarItensEnvio(a.itens)
+    if (itensEnvio.length) await salvarChecklistAtivo(props.idOrdem, a.ativo, itensEnvio)
     const resposta = await registrarResultadoAtivo(props.idOrdem, a.ativo, resultado, motivo)
     await carregar(true, a.ativo)
     emit('atualizado')

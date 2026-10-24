@@ -2,7 +2,7 @@
   <div class="fixed inset-0 w-screen h-screen min-h-screen flex overflow-hidden bg-white select-none">
 
     <div class="hidden md:flex w-2/5 bg-blue-800 flex-col items-center justify-center gap-6 p-8 shrink-0">
-      <img src="@/assets/img/fho.png" alt="Logo da FHO" class="w-24 h-24 object-contain" />
+      <img src="@/assets/img/FHO.png" alt="Logo da FHO" class="w-24 h-24 object-contain" />
       <div class="text-center">
         <h1 class="text-white text-2xl font-bold tracking-wide">Fundação Hermínio Ometto</h1>
         <p class="text-blue-200 text-sm mt-2 opacity-90">Abertura de Ordem de Serviço</p>
@@ -17,7 +17,11 @@
           <p class="text-gray-400 text-sm">Preencha os dados da ocorrência</p>
         </div>
 
-        <div class="grid grid-cols-2 gap-4">
+        <div v-if="logado" class="bg-blue-50 border border-blue-100 rounded-lg px-4 py-3 text-sm text-blue-800">
+          Abrindo como <strong>{{ authStore.usuario?.nome }}</strong>
+        </div>
+
+        <div v-else class="grid grid-cols-2 gap-4">
           <button type="button" @click="tipoUsuario = 'aluno'" :class="[
             'py-3 px-4 rounded-lg font-semibold border transition-all duration-200 cursor-pointer text-center text-sm',
             tipoUsuario === 'aluno'
@@ -38,7 +42,7 @@
         </div>
 
         <div class="space-y-4">
-          <div class="flex flex-col gap-1.5">
+          <div v-if="!logado" class="flex flex-col gap-1.5">
             <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">
               {{ tipoUsuario === 'aluno' ? 'RA - Registro do Aluno' : 'F - Número do Funcionário' }}
             </label>
@@ -104,6 +108,19 @@
               </div>
             </div>
 
+            <div v-if="logado && idLocalSelecionado" class="flex flex-col gap-1.5">
+              <label for="ativo" class="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                Equipamento com problema
+              </label>
+              <select id="ativo" v-model="idAtivoSelecionado"
+                class="border border-gray-300 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 w-full bg-white">
+                <option :value="null" disabled>{{ ativosDoLocal.length ? 'Selecione o equipamento...' : 'Nenhum equipamento cadastrado neste local' }}</option>
+                <option v-for="a in ativosDoLocal" :key="a.id_ativo" :value="a.id_ativo">
+                  {{ ROTULO_TIPO_ATIVO[a.tipo_ativo] || a.tipo_ativo }} — PAT {{ a.codigo_patrimonial }}
+                </option>
+              </select>
+            </div>
+
             <div class="flex flex-col gap-1.5">
               <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">
                 Observação / Descrição do problema
@@ -116,7 +133,7 @@
         </div>
 
         <div class="grid grid-cols-2 gap-4 pt-2">
-          <button type="button" @click="router.push('/')"
+          <button type="button" @click="voltar"
             class="py-3 rounded-lg border border-blue-800 text-blue-800 font-semibold hover:bg-blue-50 transition-all cursor-pointer text-center text-sm">
             Voltar
           </button>
@@ -136,7 +153,18 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '@/services/api'
+import { useAuthStore } from '@/stores/auth'
 import Swal from 'sweetalert2'
+
+interface Ativo {
+  id_ativo: number
+  codigo_patrimonial: string
+  tipo_ativo: string
+  localizacao: number
+}
+
+const ROTULO_TIPO_ATIVO: Record<string, string> = { AR_CONDICIONADO: 'Ar-condicionado', BEBEDOURO: 'Bebedouro' }
+const DESCRICAO_TAMANHO_MINIMO = 10
 
 interface Predio {
   id_predio: number
@@ -150,6 +178,13 @@ interface Localizacao {
 }
 
 const router = useRouter()
+const authStore = useAuthStore()
+
+// Logado, a OS fica vinculada ao solicitante (aparece em "Minhas Solicitações") e o backend exige o ativo.
+const logado = computed(() => !!authStore.token && !!authStore.usuario)
+const listaAtivos = ref<Ativo[]>([])
+const idAtivoSelecionado = ref<number | null>(null)
+const ativosDoLocal = computed(() => listaAtivos.value.filter(a => a.localizacao === idLocalSelecionado.value))
 
 const tipoUsuario = ref('aluno')
 const indentificacao = ref('')
@@ -190,12 +225,18 @@ function selecionarPredio(predio: Predio) {
   
   idLocalSelecionado.value = null
   salaNomeSelecionada.value = ''
+  idAtivoSelecionado.value = null
 }
 
 function selecionarLocalizacao(loc: Localizacao) {
   idLocalSelecionado.value = loc.id_localizacao
   salaNomeSelecionada.value = loc.desc_localizacao
   dropdownLocalAberto.value = false
+  idAtivoSelecionado.value = null
+}
+
+function voltar() {
+  router.push(logado.value ? '/dashboard-solicitante/portal' : '/')
 }
 
 async function inicializarDados() {
@@ -206,52 +247,121 @@ async function inicializarDados() {
     ])
     listaPredios.value = resPredios.data.dados || resPredios.data
     listaLocalizacoes.value = resLoc.data.dados || resLoc.data
+    if (logado.value) {
+      const resAtivos = await api.get('/ativo/')
+      listaAtivos.value = resAtivos.data.dados || resAtivos.data
+    }
   } catch (e) {
     console.error('Erro ao buscar dados iniciais:', e)
   }
 }
 
+function mensagemDeErro(e: any): string {
+  const dados = e.response?.data
+  if (!e.response) return 'Falha ao conectar com o servidor. Tente novamente.'
+  const erros = dados?.erros
+  if (erros && typeof erros === 'object') {
+    const primeiro = Object.values(erros)[0]
+    if (primeiro) return Array.isArray(primeiro) ? String(primeiro[0]) : String(primeiro)
+  }
+  return dados?.mensagem || dados?.detail || 'Não foi possível abrir a ordem de serviço.'
+}
+
+/** US05: já existe corretiva em andamento para o ativo — oferece "também presenciei". */
+async function tratarDuplicidade(dados: any, mensagem: string) {
+  const existente = dados?.ordem_existente
+  if (!existente) {
+    Swal.fire({ title: 'Ordem já existente', text: mensagem, icon: 'info', confirmButtonColor: '#2563eb' })
+    return
+  }
+  const detalhe = `OS #${existente.id_ordem_servico} (${existente.status_ordem_servico}) — ${existente.descricao_resumida}`
+
+  if (dados.ja_vinculado) {
+    await Swal.fire({ title: 'Você já acompanha esta ordem', text: detalhe, icon: 'info', confirmButtonColor: '#2563eb' })
+    voltar()
+    return
+  }
+  if (!dados.pode_presenciar) {
+    Swal.fire({ title: 'Ordem já existente', html: `${mensagem}<br><br><small>${detalhe}</small>`, icon: 'info', confirmButtonColor: '#2563eb' })
+    return
+  }
+
+  const escolha = await Swal.fire({
+    title: 'Este problema já foi informado',
+    html: `${mensagem}<br><br><small>${detalhe}</small>`,
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonText: 'Também presenciei',
+    cancelButtonText: 'Cancelar',
+    confirmButtonColor: '#2563eb',
+  })
+  if (!escolha.isConfirmed) return
+
+  try {
+    await api.post(`/ordem-servico/${existente.id_ordem_servico}/presenciei/`)
+    await Swal.fire({ title: 'Pronto!', text: 'Você passará a acompanhar esta ordem em "Minhas Solicitações".', icon: 'success', confirmButtonColor: '#2563eb' })
+    voltar()
+  } catch (e: any) {
+    Swal.fire({ title: 'Erro', text: mensagemDeErro(e), icon: 'error', confirmButtonColor: '#ef4444' })
+  }
+}
+
 async function enviarOS() {
-  if (!indentificacao.value || !idPredioSelecionado.value || !idLocalSelecionado.value || !observacao.value) {
-    Swal.fire({ title: 'Atenção', text: 'Por favor, preencha todos os campos e selecione a Sala/Ambiente.', icon: 'warning', confirmButtonColor: '#2563eb' })
+  const faltaIdentificacao = !logado.value && !indentificacao.value
+  const faltaAtivo = logado.value && !idAtivoSelecionado.value
+  if (faltaIdentificacao || faltaAtivo || !idPredioSelecionado.value || !idLocalSelecionado.value || !observacao.value.trim()) {
+    const texto = faltaAtivo
+      ? 'Selecione o equipamento com problema.'
+      : 'Por favor, preencha todos os campos e selecione a Sala/Ambiente.'
+    Swal.fire({ title: 'Atenção', text: texto, icon: 'warning', confirmButtonColor: '#2563eb' })
+    return
+  }
+  if (observacao.value.trim().length < DESCRICAO_TAMANHO_MINIMO) {
+    Swal.fire({ title: 'Atenção', text: `Descreva o problema com pelo menos ${DESCRICAO_TAMANHO_MINIMO} caracteres.`, icon: 'warning', confirmButtonColor: '#2563eb' })
     return
   }
 
   try {
     carregando.value = true
 
-    const payload = {
-      localizacao: idLocalSelecionado.value,
-      descricao_servico: `[${tipoUsuario.value.toUpperCase()}: ${indentificacao.value}] - Problema: ${observacao.value}`,
-      prioridade_urgencia: 'NAO'
-    }
+    const payload = logado.value
+      ? {
+          localizacao: idLocalSelecionado.value,
+          ativo: idAtivoSelecionado.value,
+          descricao_servico: observacao.value.trim(),
+          prioridade_urgencia: 'NAO'
+        }
+      : {
+          localizacao: idLocalSelecionado.value,
+          descricao_servico: `[${tipoUsuario.value.toUpperCase()}: ${indentificacao.value}] - Problema: ${observacao.value.trim()}`,
+          prioridade_urgencia: 'NAO'
+        }
 
     await api.post('/ordem-servico/', payload)
 
-    await Swal.fire({ 
-      title: 'Sucesso!', 
-      text: 'A sua Ordem de Serviço foi registada com sucesso.', 
-      icon: 'success', 
-      confirmButtonColor: '#2563eb' 
+    await Swal.fire({
+      title: 'Sucesso!',
+      text: 'A sua Ordem de Serviço foi registada com sucesso.',
+      icon: 'success',
+      confirmButtonColor: '#2563eb'
     })
 
-    router.push('/')
+    voltar()
 
   } catch (e: any) {
     console.error('Erro ao abrir OS:', e)
-    let msgErro = 'Falha ao conectar com o servidor. Tente novamente.'
-    if (e.response?.data?.msg) msgErro = e.response.data.msg
-    else if (e.response?.data?.detail) msgErro = e.response.data.detail
-    
-    Swal.fire({ title: 'Erro', text: msgErro, icon: 'error', confirmButtonColor: '#ef4444' })
+    if (e.response?.status === 409) {
+      await tratarDuplicidade(e.response.data?.dados, e.response.data?.mensagem || '')
+      return
+    }
+    Swal.fire({ title: 'Erro', text: mensagemDeErro(e), icon: 'error', confirmButtonColor: '#ef4444' })
   } finally {
     carregando.value = false
   }
 }
 
 onMounted(() => {
-  localStorage.removeItem('token') 
-  inicializarDados() 
+  inicializarDados()
 })
 </script>
 

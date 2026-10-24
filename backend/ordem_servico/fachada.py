@@ -177,7 +177,7 @@ class OrdemServicoFacade:
             f"Ordem de serviço aberta por {nome_solicitante}. Status inicial: {status_para_api(ordem_servico.status_ordem_servico)}.",
         )
 
-        alerta = alerta_preventiva_proxima(ordem_servico.ativo, ordem_servico.dt_abertura.date()) if ordem_servico.ativo_id else None
+        alerta = alerta_preventiva_proxima(ordem_servico.ativo, timezone.localdate(ordem_servico.dt_abertura)) if ordem_servico.ativo_id else None
         if alerta is not None:
             registrar_historico(ordem_servico, usuario, f"Alerta de proximidade de preventiva: {alerta['mensagem']}")
         return ordem_servico

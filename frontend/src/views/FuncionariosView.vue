@@ -142,7 +142,7 @@ import { ref, computed, onMounted } from 'vue'
 import api from '@/services/api'
 import Swal from 'sweetalert2'
 
-const funcionarios = ref([])
+const funcionarios = ref<any[]>([])
 const grupos = ref<any[]>([])
 const busca = ref('')
 const filtroCargo = ref('')

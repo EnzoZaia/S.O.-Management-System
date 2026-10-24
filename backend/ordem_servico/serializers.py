@@ -1,3 +1,4 @@
+from django.utils import timezone
 from rest_framework import serializers
 from ordem_servico.constantes import (
     CATEGORIAS_MANUTENCAO,
@@ -88,7 +89,7 @@ class OrdemServicoSerializer(serializers.ModelSerializer):
     def get_alerta_preventiva(self, obj):
         if obj.tipo_manutencao != TIPO_CORRETIVA or not obj.ativo_id or obj.status_ordem_servico not in STATUS_ATIVOS:
             return None
-        return alerta_preventiva_proxima(obj.ativo, obj.dt_abertura.date() if obj.dt_abertura else None)
+        return alerta_preventiva_proxima(obj.ativo, timezone.localdate(obj.dt_abertura) if obj.dt_abertura else None)
 
     def get_ativo_nome(self, obj):
         if obj.ativo:

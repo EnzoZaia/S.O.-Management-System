@@ -436,8 +436,8 @@ const formatarHistorico = (evento: any, os: any) => {
   const regex = /(.*?)(?:Detalhes:|Justificativa:)(.*)/i;
   const match = String(textoOriginal).match(regex);
 
-  let principal = match ? match[1].trim() : String(textoOriginal).trim();
-  let detalhe = match ? match[2].trim() : '';
+  let principal = match ? (match[1] ?? '').trim() : String(textoOriginal).trim();
+  let detalhe = match ? (match[2] ?? '').trim() : '';
 
   if (os && principal.includes('Usuário Anônimo')) {
     principal = principal.replace('Usuário Anônimo', extrairSolicitante(os));

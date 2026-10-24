@@ -3,6 +3,7 @@ from rest_framework import generics, status
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, AllowAny
 
+from authentication.authentication import OptionalJWTAuthentication
 from ordem_servico.acesso import resolver_fabrica_acesso
 from ativo.models import Ativo
 from ordem_servico.fachada import (
@@ -72,6 +73,12 @@ class OrdemServicoListCreateView(generics.ListCreateAPIView):
         if self.request.method == 'POST':
             return [AllowAny(),]
         return [IsAuthenticated()]
+
+    def get_authenticators(self):
+        # Abertura pública: um token antigo salvo no navegador não pode bloquear o POST.
+        if self.request.method == 'POST':
+            return [OptionalJWTAuthentication()]
+        return super().get_authenticators()
 
     def get_queryset(self):
         return _escopo_do_usuario(self.request.user)

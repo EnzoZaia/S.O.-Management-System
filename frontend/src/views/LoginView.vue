@@ -47,7 +47,7 @@
                         <div class="flex-1 h-px bg-gray-200"></div>
                     </div>
 
-                    <button type="button" @click="router.push('/abrir-os')"
+                    <button type="button" @click="abrirOsSemLogin"
                         class="border border-blue-800 text-blue-800 py-3 rounded-lg font-semibold hover:bg-blue-50 cursor-pointer">
                         Abrir Ordem de Serviço
                     </button>
@@ -72,6 +72,12 @@ import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
 const authStore = useAuthStore()
+
+// Abertura pública pela tela de login: descarta um login antigo para a OS sair como anônima.
+function abrirOsSemLogin() {
+    authStore.logout()
+    router.push('/abrir-os')
+}
 
 const email = ref('')
 const senha = ref('')

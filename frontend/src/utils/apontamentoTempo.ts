@@ -64,6 +64,7 @@ export function calcularApontamento(eventos: EventoStatus[], agora: number): Apo
 
 export function formatarDuracao(ms: number): string {
   const minutos = Math.floor(ms / 60000)
+  if (ms <= 0) return '0 min'
   if (minutos < 1) return '< 1 min'
   const dias = Math.floor(minutos / 1440)
   const horas = Math.floor((minutos % 1440) / 60)

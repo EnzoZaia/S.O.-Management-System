@@ -18,3 +18,13 @@ class CustomJWTAuthentication(JWTAuthentication):
             raise AuthenticationFailed('Usuário desativado. Procure o gerente do sistema.', code='usuario_inativo')
 
         return usuario
+
+
+class OptionalJWTAuthentication(CustomJWTAuthentication):
+    """Para endpoints públicos: token inválido/expirado vira requisição anônima em vez de 401."""
+
+    def authenticate(self, request):
+        try:
+            return super().authenticate(request)
+        except (InvalidToken, AuthenticationFailed):
+            return None

@@ -17,7 +17,11 @@ export function formatarDataAtivo(iso?: string | null): string {
 
 export function diasPara(iso?: string | null, hoje = new Date()): number | null {
   const d = parseDataLocal(iso)
-  return d ? Math.ceil((d.getTime() - hoje.getTime()) / MS_DIA) : null
+  if (!d) return null
+  // Compara só as datas (ambas ao meio-dia), igual ao cálculo do backend.
+  const base = new Date(hoje)
+  base.setHours(12, 0, 0, 0)
+  return Math.round((d.getTime() - base.getTime()) / MS_DIA)
 }
 
 export function grupoAtivo(g: Pick<GrupoPreventiva, 'status_ordem_servico'>): boolean {

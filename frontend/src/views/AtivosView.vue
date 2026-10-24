@@ -69,6 +69,7 @@
                 <div class="flex items-center gap-3">
                   <div class="w-10 h-10 rounded-lg border flex items-center justify-center shrink-0 shadow-sm" :class="obterCorStatus(ativo).bg_icon">
                     <span v-if="ativo.tipo_ativo === 'AR_CONDICIONADO'" class="text-xl">❄️</span>
+                    <span v-else-if="ativo.tipo_ativo === 'BEBEDOURO'" class="text-xl">🚰</span>
                     <span v-else class="text-xl">🖥️</span>
                   </div>
                   <div>
@@ -76,6 +77,10 @@
                     <div class="text-[10px] font-semibold mt-0.5" :class="obterCorStatus(ativo).text">
                       {{ obterCorStatus(ativo).label }}
                     </div>
+                    <span v-if="saudeDe(ativo)" class="inline-block mt-1 px-2 py-0.5 rounded text-[10px] font-bold border"
+                      :class="COR_SAUDE[saudeDe(ativo).classificacao]" :title="saudeDe(ativo).fatores.map((f: any) => f.descricao).join('\n')">
+                      Saúde {{ saudeDe(ativo).nota }} · {{ saudeDe(ativo).classificacao_rotulo }}
+                    </span>
                   </div>
                 </div>
               </td>
@@ -126,6 +131,7 @@
               <label class="text-xs font-bold text-gray-500 uppercase tracking-wider">Tipo de Ativo *</label>
               <select v-model="form.tipo_ativo" class="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 cursor-pointer">
                 <option value="AR_CONDICIONADO">Ar Condicionado</option>
+                <option value="BEBEDOURO">Bebedouro</option>
               </select>
             </div>
             
@@ -200,7 +206,7 @@
         <div class="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50 shrink-0">
           <div class="flex items-center gap-4">
             <div class="w-12 h-12 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 text-2xl shadow-sm">
-              {{ ativoSelecionado?.tipo_ativo === 'AR_CONDICIONADO' ? '❄️' : '🖥️' }}
+              {{ ativoSelecionado?.tipo_ativo === 'AR_CONDICIONADO' ? '❄️' : ativoSelecionado?.tipo_ativo === 'BEBEDOURO' ? '🚰' : '🖥️' }}
             </div>
             <div>
               <p class="text-[10px] font-bold text-indigo-500 uppercase tracking-wider mb-0.5">Prontuário do Equipamento</p>
@@ -241,6 +247,23 @@
                 <span class="text-sm font-black text-indigo-700">{{ ativoSelecionado?.dt_proxima_preventiva ? formatarData(ativoSelecionado.dt_proxima_preventiva) : 'A calcular...' }}</span>
               </div>
             </div>
+          </div>
+
+          <div v-if="saudeDe(ativoSelecionado)" class="rounded-2xl border p-5" :class="COR_SAUDE[saudeDe(ativoSelecionado).classificacao]">
+            <div class="flex items-center justify-between gap-4">
+              <div>
+                <p class="text-[10px] font-black uppercase tracking-wider mb-1">Asset Health Score</p>
+                <p class="text-sm font-bold">{{ saudeDe(ativoSelecionado).classificacao_rotulo }}</p>
+              </div>
+              <p class="text-4xl font-black">{{ saudeDe(ativoSelecionado).nota }}<span class="text-base font-bold opacity-60">/100</span></p>
+            </div>
+            <ul v-if="saudeDe(ativoSelecionado).fatores.length" class="mt-4 space-y-1 text-xs font-medium">
+              <li v-for="f in saudeDe(ativoSelecionado).fatores" :key="f.fator" class="flex justify-between gap-4">
+                <span>{{ f.descricao }}</span>
+                <span class="font-bold shrink-0">{{ f.pontos }}</span>
+              </li>
+            </ul>
+            <p v-else class="mt-3 text-xs font-medium">Nenhum fator de risco identificado.</p>
           </div>
 
           <div>
@@ -292,6 +315,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import api from '@/services/api'
+import { diasPara } from '@/utils/painelPreventivas'
 import Swal from 'sweetalert2'
 
 const route = useRoute()
@@ -321,6 +345,26 @@ const loadingHistorico = ref(false)
 const listaPredios = ref<any[]>([])
 const listaLocalizacoes = ref<any[]>([])
 const idPredioSelecionado = ref<number | null>(null)
+
+// US17: Asset Health Score calculado pelo backend (GET /ativo/saude/).
+const saudePorAtivo = ref<Record<number, any>>({})
+const COR_SAUDE: Record<string, string> = {
+  SAUDAVEL: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  ATENCAO: 'bg-yellow-50 text-yellow-700 border-yellow-200',
+  CRITICO: 'bg-orange-50 text-orange-700 border-orange-200',
+  MUITO_CRITICO: 'bg-red-50 text-red-700 border-red-200',
+}
+const saudeDe = (ativo: any) => (ativo ? saudePorAtivo.value[ativo.id_ativo || ativo.id] : null)
+
+async function carregarSaude() {
+  try {
+    const { data } = await api.get('/ativo/saude/', authHeader())
+    const lista: any[] = data?.dados || []
+    saudePorAtivo.value = Object.fromEntries(lista.map((s) => [s.id_ativo, s]))
+  } catch (error) {
+    console.error('Erro ao calcular a saúde dos ativos:', error)
+  }
+}
 
 const form = ref({
   id_ativo: null,
@@ -369,9 +413,7 @@ function obterCorStatus(ativo: any) {
     return { bg_icon: 'bg-gray-50 border-gray-200 text-gray-400', text: 'text-gray-400', label: 'Sem Registro', icon: '⚪', status: 'semregistro' }
   }
 
-  const dataProxima = new Date(`${ativo.dt_proxima_preventiva}T12:00:00`).getTime()
-  const hoje = new Date().getTime()
-  const diffDias = Math.ceil((dataProxima - hoje) / (1000 * 60 * 60 * 24))
+  const diffDias = diasPara(ativo.dt_proxima_preventiva) ?? 0
 
   if (diffDias < 0) {
     return { bg_icon: 'bg-red-50 border-red-200 text-red-600', text: 'text-red-600', label: `Atrasada (${Math.abs(diffDias)} dias)`, icon: '🔴', status: 'atrasada' }
@@ -442,7 +484,7 @@ const ativosAgrupados = computed(() => {
   })
 
   return Object.keys(agrupado).sort().reduce((obj: Record<string, any[]>, key) => {
-    obj[key] = agrupado[key]
+    obj[key] = agrupado[key] ?? []
     return obj
   }, {})
 })
@@ -463,6 +505,7 @@ async function carregarDados() {
     ativos.value = resAtivos.data.dados || resAtivos.data || []
     listaPredios.value = resPredios.data.dados || resPredios.data || []
     listaLocalizacoes.value = resLoc.data.dados || resLoc.data || []
+    carregarSaude()
   } catch (error) {
     console.error('Erro ao buscar dados:', error)
   } finally {
