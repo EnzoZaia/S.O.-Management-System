@@ -28,7 +28,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
             'nome': {'error_messages': {'required': "O nome é obrigatório.", 'blank': "O nome é obrigatório."}},
             'email': {'validators': [], 'error_messages': {'required': "O e-mail é obrigatório.", 'blank': "O e-mail é obrigatório."}},
         }
-
+    
     @property
     def _pelo_gerente(self) -> bool:
         return bool(self.context.get('pelo_gerente'))

@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import LoginView from '@/views/LoginView.vue'
 import ConfirmarEmailView from '../views/ConfirmarEmailView.vue'
+import { useAuthStore } from '@/stores/auth'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -33,6 +34,12 @@ const router = createRouter({
         {
           path: 'indicadores',
           component: () => import('@/views/IndicadoresView.vue'),
+        },
+        {
+          path: 'indicadores-globais',
+          name: 'indicadores-globais',
+          component: () => import('@/views/IndicadoresGlobaisView.vue'),
+          meta: { perfis: ['GERENTE'] },
         },
         {
           path: 'funcionarios',
@@ -128,6 +135,16 @@ const router = createRouter({
       component: () => import('@/views/PerfilView.vue'),
     },
   ],
+})
+
+// US16/CA2: rotas com meta.perfis só abrem para quem tem ao menos um dos perfis exigidos.
+router.beforeEach((to) => {
+  const exigidos = to.matched.flatMap((r) => (r.meta.perfis as string[] | undefined) ?? [])
+  if (exigidos.length === 0) return true
+  const auth = useAuthStore()
+  if (!auth.token) return { name: 'login' }
+  const grupos: string[] = auth.usuario?.grupos ?? []
+  return exigidos.some((p) => grupos.includes(p)) ? true : { name: 'login' }
 })
 
 export default router
