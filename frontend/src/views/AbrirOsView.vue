@@ -11,7 +11,7 @@
 
     <div class="flex-1 h-full overflow-y-auto bg-white flex flex-col justify-start md:justify-center items-center px-6 py-12 sm:px-12">
       <div class="w-full max-w-md space-y-6 my-auto">
-        
+
         <div>
           <h2 class="text-blue-800 text-2xl font-bold mb-1">Nova OS</h2>
           <p class="text-gray-400 text-sm">Preencha os dados da ocorrência</p>
@@ -66,7 +66,7 @@
               </svg>
             </div>
 
-            <div v-if="dropdownPredioAberto" 
+            <div v-if="dropdownPredioAberto"
                  class="absolute left-0 right-0 top-[calc(100%+4px)] bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-48 overflow-y-auto">
               <ul class="py-1">
                 <li v-for="predio in listaPredios" :key="predio.id_predio" @click="selecionarPredio(predio)"
@@ -78,7 +78,7 @@
           </div>
 
           <div v-if="idPredioSelecionado" class="space-y-4 pt-1 animate-fade-in">
-            
+
             <div class="flex flex-col gap-1.5 relative">
               <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">
                 Especifique o local (Sala, Laboratório ou Ambiente)
@@ -94,7 +94,7 @@
                 </svg>
               </div>
 
-              <div v-if="dropdownLocalAberto" 
+              <div v-if="dropdownLocalAberto"
                    class="absolute left-0 right-0 top-[calc(100%+4px)] bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-48 overflow-y-auto">
                 <ul class="py-1">
                   <li v-if="localizacoesFiltradas.length === 0" class="px-4 py-2 text-sm text-gray-400 italic">
@@ -108,13 +108,19 @@
               </div>
             </div>
 
-            <div v-if="logado && idLocalSelecionado" class="flex flex-col gap-1.5">
+            <!-- Equipamento: obrigatório para quem está logado, opcional na abertura anônima (aluno e funcionário) -->
+            <div v-if="idLocalSelecionado" class="flex flex-col gap-1.5">
               <label for="ativo" class="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                Equipamento com problema
+                Equipamento com problema{{ logado ? '' : ' (opcional)' }}
               </label>
-              <select id="ativo" v-model="idAtivoSelecionado"
+              <select id="ativo" v-model="idAtivoSelecionado" data-testid="select-ativo"
                 class="border border-gray-300 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 w-full bg-white">
-                <option :value="null" disabled>{{ ativosDoLocal.length ? 'Selecione o equipamento...' : 'Nenhum equipamento cadastrado neste local' }}</option>
+                <option v-if="logado" :value="null" disabled>
+                  {{ ativosDoLocal.length ? 'Selecione o equipamento...' : 'Nenhum equipamento cadastrado neste local' }}
+                </option>
+                <option v-else :value="null">
+                  {{ ativosDoLocal.length ? 'Não se aplica / outro problema' : 'Nenhum equipamento cadastrado neste local' }}
+                </option>
                 <option v-for="a in ativosDoLocal" :key="a.id_ativo" :value="a.id_ativo">
                   {{ ROTULO_TIPO_ATIVO[a.tipo_ativo] || a.tipo_ativo }} — PAT {{ a.codigo_patrimonial }}
                 </option>
@@ -128,6 +134,34 @@
               <textarea v-model="observacao" placeholder="Ex: Arrumar ar condicionado, projetor queimado, cadeira quebrada..."
                 rows="3" class="border border-gray-300 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 w-full resize-none transition-all">
               </textarea>
+            </div>
+
+            <!-- Evidências (imagens): somente nesta tela de abertura, tanto anônimo quanto logado -->
+            <div class="flex flex-col gap-1.5" :data-testid="logado ? 'evidencias-abertura' : 'evidencias-anonimo'">
+              <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                Evidência (opcional)
+              </label>
+              <label
+                :class="carregando ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-blue-50'"
+                class="flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 rounded-lg py-3 text-xs font-bold text-blue-800 transition-colors">
+                📎 Anexar foto do problema
+                <input type="file" :accept="ACCEPT_IMAGENS" multiple class="hidden" :disabled="carregando" @change="aoEscolherImagens" />
+              </label>
+              <p class="text-[11px] text-gray-400">
+                JPG, PNG ou WEBP, até {{ IMAGEM_TAMANHO_MAX_MB }} MB cada, no máximo {{ EVIDENCIAS_POR_ENVIO_MAX }} imagens.
+              </p>
+
+              <ul v-if="imagens.length" class="grid grid-cols-3 gap-2 mt-1">
+                <li v-for="(img, i) in imagens" :key="img.url"
+                  class="relative border border-gray-200 rounded-lg overflow-hidden bg-gray-50">
+                  <img :src="img.url" :alt="img.arquivo.name" class="w-full h-20 object-cover" />
+                  <button type="button" @click="removerImagem(i)" :disabled="carregando"
+                    class="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 text-white text-[10px] font-bold flex items-center justify-center cursor-pointer hover:bg-red-600"
+                    :aria-label="`Remover ${img.arquivo.name}`">✕</button>
+                  <p class="text-[10px] text-gray-600 truncate px-1.5 py-1" :title="img.arquivo.name">{{ img.arquivo.name }}</p>
+                </li>
+              </ul>
+              <p v-if="erroImagens" role="alert" class="text-[11px] font-medium text-red-600">{{ erroImagens }}</p>
             </div>
           </div>
         </div>
@@ -150,10 +184,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
+import { EvidenciaError, enviarEvidencias } from '@/services/evidenciaService'
+import {
+  EVIDENCIAS_POR_ENVIO_MAX, IMAGEM_TAMANHO_MAX_MB, TIPOS_IMAGEM,
+} from '@/utils/validacaoEvidencia'
 import Swal from 'sweetalert2'
 
 interface Ativo {
@@ -162,9 +200,6 @@ interface Ativo {
   tipo_ativo: string
   localizacao: number
 }
-
-const ROTULO_TIPO_ATIVO: Record<string, string> = { AR_CONDICIONADO: 'Ar-condicionado', BEBEDOURO: 'Bebedouro' }
-const DESCRICAO_TAMANHO_MINIMO = 10
 
 interface Predio {
   id_predio: number
@@ -176,6 +211,15 @@ interface Localizacao {
   desc_localizacao: string
   predio: number
 }
+
+interface ImagemSelecionada {
+  arquivo: File
+  url: string
+}
+
+const ROTULO_TIPO_ATIVO: Record<string, string> = { AR_CONDICIONADO: 'Ar-condicionado', BEBEDOURO: 'Bebedouro' }
+const DESCRICAO_TAMANHO_MINIMO = 10
+const ACCEPT_IMAGENS = TIPOS_IMAGEM.join(',')
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -203,6 +247,10 @@ const carregando = ref(false)
 const listaPredios = ref<Predio[]>([])
 const listaLocalizacoes = ref<Localizacao[]>([])
 
+// === Evidências (somente imagens, somente na abertura) ===
+const imagens = ref<ImagemSelecionada[]>([])
+const erroImagens = ref('')
+
 const localizacoesFiltradas = computed(() => {
   if (!idPredioSelecionado.value) return []
   return listaLocalizacoes.value.filter(l => l.predio === idPredioSelecionado.value)
@@ -210,19 +258,19 @@ const localizacoesFiltradas = computed(() => {
 
 function toggleDropdownPredio() {
   dropdownPredioAberto.value = !dropdownPredioAberto.value
-  dropdownLocalAberto.value = false 
+  dropdownLocalAberto.value = false
 }
 
 function toggleDropdownLocalizacao() {
   dropdownLocalAberto.value = !dropdownLocalAberto.value
-  dropdownPredioAberto.value = false 
+  dropdownPredioAberto.value = false
 }
 
 function selecionarPredio(predio: Predio) {
   idPredioSelecionado.value = predio.id_predio
   localNomeSelecionado.value = predio.nome_predio
   dropdownPredioAberto.value = false
-  
+
   idLocalSelecionado.value = null
   salaNomeSelecionada.value = ''
   idAtivoSelecionado.value = null
@@ -239,20 +287,77 @@ function voltar() {
   router.push(logado.value ? '/dashboard-solicitante/portal' : '/')
 }
 
+/** Valida só imagens (JPG, PNG, WEBP), tamanho e quantidade, antes de enviar. */
+function validarImagens(arquivos: File[]): string | null {
+  if (arquivos.length > EVIDENCIAS_POR_ENVIO_MAX) return `Envie no máximo ${EVIDENCIAS_POR_ENVIO_MAX} imagens.`
+  for (const arq of arquivos) {
+    if (!TIPOS_IMAGEM.includes(arq.type)) return `"${arq.name}" não é uma imagem aceita (use JPG, PNG ou WEBP).`
+    if (arq.size > IMAGEM_TAMANHO_MAX_MB * 1024 * 1024) return `"${arq.name}" passa de ${IMAGEM_TAMANHO_MAX_MB} MB.`
+  }
+  return null
+}
+
+function aoEscolherImagens(evento: Event) {
+  const input = evento.target as HTMLInputElement
+  const escolhidos = Array.from(input.files ?? [])
+  input.value = ''
+
+  const jaSelecionados = imagens.value.map(i => i.arquivo)
+  const novos = escolhidos.filter(
+    n => !jaSelecionados.some(a => a.name === n.name && a.size === n.size && a.lastModified === n.lastModified),
+  )
+
+  const erro = validarImagens([...jaSelecionados, ...novos])
+  erroImagens.value = erro ?? ''
+  if (erro) return
+
+  imagens.value = [
+    ...imagens.value,
+    ...novos.map(arquivo => ({ arquivo, url: URL.createObjectURL(arquivo) })),
+  ]
+}
+
+function removerImagem(indice: number) {
+  const alvo = imagens.value[indice]
+  if (alvo) URL.revokeObjectURL(alvo.url)
+  imagens.value = imagens.value.filter((_, i) => i !== indice)
+  erroImagens.value = ''
+}
+
+function liberarPreviews() {
+  imagens.value.forEach(i => URL.revokeObjectURL(i.url))
+  imagens.value = []
+}
+
+onBeforeUnmount(liberarPreviews)
+
 async function inicializarDados() {
   try {
     const [resPredios, resLoc] = await Promise.all([
       api.get('/predio/'),
-      api.get('/localizacao/')
+      api.get('/localizacao/'),
     ])
     listaPredios.value = resPredios.data.dados || resPredios.data
     listaLocalizacoes.value = resLoc.data.dados || resLoc.data
-    if (logado.value) {
-      const resAtivos = await api.get('/ativo/')
-      listaAtivos.value = resAtivos.data.dados || resAtivos.data
-    }
   } catch (e) {
-    console.error('Erro ao buscar dados iniciais:', e)
+    console.error('Erro ao buscar prédios e localizações:', e)
+  }
+
+  // Equipamentos: endpoint público e enxuto, usado por quem está logado e por quem não está.
+  try {
+    const resAtivos = await api.get('/ativo/publico/')
+    listaAtivos.value = resAtivos.data.dados || resAtivos.data
+  } catch (e) {
+    console.error('Erro ao buscar equipamentos públicos:', e)
+    // Quem está logado ainda pode usar a listagem autenticada como alternativa.
+    if (logado.value) {
+      try {
+        const resAtivos = await api.get('/ativo/')
+        listaAtivos.value = resAtivos.data.dados || resAtivos.data
+      } catch (e2) {
+        console.error('Erro ao buscar equipamentos:', e2)
+      }
+    }
   }
 }
 
@@ -306,6 +411,20 @@ async function tratarDuplicidade(dados: any, mensagem: string) {
   }
 }
 
+/**
+ * Anônimo com imagens: o envio vira multipart (campo "arquivos"), tudo numa única requisição.
+ * Anônimo sem imagens e logado: segue como JSON (logado envia as imagens depois, na OS já criada).
+ */
+function montarCorpo(payload: Record<string, unknown>): Record<string, unknown> | FormData {
+  if (logado.value || imagens.value.length === 0) return payload
+  const form = new FormData()
+  for (const [chave, valor] of Object.entries(payload)) {
+    if (valor !== null && valor !== undefined) form.append(chave, String(valor))
+  }
+  imagens.value.forEach(i => form.append('arquivos', i.arquivo))
+  return form
+}
+
 async function enviarOS() {
   const faltaIdentificacao = !logado.value && !indentificacao.value
   const faltaAtivo = logado.value && !idAtivoSelecionado.value
@@ -321,10 +440,16 @@ async function enviarOS() {
     return
   }
 
+  const erroImg = validarImagens(imagens.value.map(i => i.arquivo))
+  if (erroImg) {
+    erroImagens.value = erroImg
+    return
+  }
+
   try {
     carregando.value = true
 
-    const payload = logado.value
+    const payload: Record<string, unknown> = logado.value
       ? {
           localizacao: idLocalSelecionado.value,
           ativo: idAtivoSelecionado.value,
@@ -334,18 +459,43 @@ async function enviarOS() {
       : {
           localizacao: idLocalSelecionado.value,
           descricao_servico: `[${tipoUsuario.value.toUpperCase()}: ${indentificacao.value}] - Problema: ${observacao.value.trim()}`,
-          prioridade_urgencia: 'NAO'
+          prioridade_urgencia: 'NAO',
+          // O equipamento é opcional na abertura anônima.
+          ...(idAtivoSelecionado.value ? { ativo: idAtivoSelecionado.value } : {}),
         }
 
-    await api.post('/ordem-servico/', payload)
+    const resposta = await api.post('/ordem-servico/', montarCorpo(payload))
 
-    await Swal.fire({
-      title: 'Sucesso!',
-      text: 'A sua Ordem de Serviço foi registada com sucesso.',
-      icon: 'success',
-      confirmButtonColor: '#2563eb'
-    })
+    // Logado: a OS já existe, então as imagens são anexadas a ela agora.
+    let avisoEvidencia = ''
+    const idOrdem: number | undefined = resposta.data?.dados?.id_ordem_servico
+    if (logado.value && imagens.value.length > 0 && idOrdem) {
+      try {
+        await enviarEvidencias(idOrdem, imagens.value.map(i => i.arquivo))
+      } catch (e) {
+        avisoEvidencia = e instanceof EvidenciaError
+          ? e.info.mensagem
+          : 'Não foi possível enviar as imagens.'
+      }
+    }
 
+    if (avisoEvidencia) {
+      await Swal.fire({
+        title: 'OS aberta, mas sem as imagens',
+        text: `A ordem foi registada, porém as evidências não foram enviadas: ${avisoEvidencia}`,
+        icon: 'warning',
+        confirmButtonColor: '#2563eb'
+      })
+    } else {
+      await Swal.fire({
+        title: 'Sucesso!',
+        text: 'A sua Ordem de Serviço foi registada com sucesso.',
+        icon: 'success',
+        confirmButtonColor: '#2563eb'
+      })
+    }
+
+    liberarPreviews()
     voltar()
 
   } catch (e: any) {
