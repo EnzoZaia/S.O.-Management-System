@@ -33,7 +33,7 @@ def cenario(db, settings, tmp_path):
     participante = criar_usuario("Joao", "joao.ev@fho.edu.br", "SOLICITANTE")
     tecnico = criar_usuario("Tec", "tec.ev@fho.edu.br", "TECNICO")
     gestor = criar_usuario("Gestor", "gestor.ev@fho.edu.br", "GESTOR")
-    ordem_servico = criar_os(criar_localizacao(), solicitante=solicitante, tecnico=tecnico, gestor=gestor, status_ordem_servico="EM_EXECUCAO")
+    ordem_servico = criar_os(criar_localizacao(), solicitante=solicitante, tecnico=tecnico, gestor=gestor, status_ordem_servico="EM_TRIAGEM")
     OsParticipante.objects.create(ordem_servico=ordem_servico, usuario=participante, dt_vinculo=timezone.now())
     return {"os": ordem_servico, "solicitante": solicitante, "participante": participante, "tecnico": tecnico, "gestor": gestor, "tmp": tmp_path}
 
@@ -73,8 +73,8 @@ def test_quem_nao_e_solicitante_nem_participante_recebe_403(cenario, ator):
     assert not EvidenciaOrdem.objects.exists()
 
 
-@pytest.mark.parametrize("status_os", ["ENCERRADA", "CANCELADA", "CONCLUIDA"])
-def test_status_fora_da_etapa_retorna_409(cenario, status_os):
+@pytest.mark.parametrize("status_os", ["APROVADA", "EM_EXECUCAO", "AGUARDANDO_VALIDACAO", "ENCERRADA", "CANCELADA", "CONCLUIDA"])
+def test_evidencia_so_e_aceita_antes_da_triagem(cenario, status_os):
     cenario["os"].status_ordem_servico = status_os
     cenario["os"].save()
 
@@ -153,3 +153,69 @@ def test_perfis_autorizados_listam_com_autoria_em_ordem(cenario):
     estranho = criar_usuario("Estranho", "estranho.ev@fho.edu.br", "SOLICITANTE")
     assert _cliente(estranho).get(_url(cenario)).status_code == 403
     assert _cliente().get(_url(cenario)).status_code == 401
+
+
+def test_gerente_visualiza_evidencias_da_abertura(cenario):
+    _cliente(cenario["solicitante"]).post(_url(cenario), {"arquivos": [_arquivo("a.jpg", JPEG)]}, format="multipart")
+    gerente = criar_usuario("Gerente", "gerente.ev@fho.edu.br", "GERENTE")
+
+    resposta = _cliente(gerente).get(_url(cenario))
+
+    assert resposta.status_code == 200
+    assert [item["nome_original"] for item in resposta.data["dados"]] == ["a.jpg"]
+
+
+def _ativo(localizacao, codigo="PAT-EV-1"):
+    from ativo.models import Ativo
+    return Ativo.objects.create(localizacao=localizacao, codigo_patrimonial=codigo, tipo_ativo="AR_CONDICIONADO", periodicidade_preventiva_dias=90)
+
+
+def test_abertura_anonima_com_ativo_e_imagem(db, settings, tmp_path):
+    settings.MEDIA_ROOT = tmp_path
+    localizacao = criar_localizacao("Bloco E", "Lab 1")
+    ativo = _ativo(localizacao)
+
+    resposta = _cliente().post("/ordem-servico/", {
+        "localizacao": localizacao.pk, "ativo": ativo.pk,
+        "descricao_servico": "[ALUNO: 123] - Problema: ar pingando",
+        "arquivos": [_arquivo("foto.png", PNG, "image/png")],
+    }, format="multipart")
+
+    assert resposta.status_code == 201
+    id_os = resposta.data["dados"]["id_ordem_servico"]
+    evidencia = EvidenciaOrdem.objects.get(ordem_servico_id=id_os)
+    assert evidencia.usuario_id is None
+    assert resposta.data["dados"]["ativo"] == ativo.pk
+
+    gestor = criar_usuario("Gestor E", "gestor.e@fho.edu.br", "GESTOR")
+    lista = _cliente(gestor).get(f"/ordem-servico/{id_os}/evidencias/")
+    assert lista.status_code == 200
+    assert lista.data["dados"][0]["enviado_por_nome"] == "Solicitante anônimo"
+
+
+def test_abertura_com_imagem_invalida_nao_cria_a_ordem(db, settings, tmp_path):
+    from ordem_servico.models import OrdemServico
+    settings.MEDIA_ROOT = tmp_path
+    localizacao = criar_localizacao("Bloco F", "Sala 2")
+
+    resposta = _cliente().post("/ordem-servico/", {
+        "localizacao": localizacao.pk, "descricao_servico": "[ALUNO: 123] - Problema: cadeira quebrada",
+        "arquivos": [_arquivo("foto.png", b"nao e imagem" * 10, "image/png")],
+    }, format="multipart")
+
+    assert resposta.status_code == 400
+    assert "arquivos" in resposta.data["erros"]
+    assert not OrdemServico.objects.exists()
+    assert not EvidenciaOrdem.objects.exists()
+
+
+def test_lista_publica_de_ativos_traz_so_o_necessario(db):
+    localizacao = criar_localizacao("Bloco G", "Sala 3")
+    outra = criar_localizacao("Bloco H", "Sala 4")
+    ativo = _ativo(localizacao, "PAT-G")
+    _ativo(outra, "PAT-H")
+
+    resposta = _cliente().get(f"/ativo/publico/?localizacao={localizacao.pk}", HTTP_AUTHORIZATION="Bearer token.velho")
+
+    assert resposta.status_code == 200
+    assert resposta.data["dados"] == [{"id_ativo": ativo.pk, "codigo_patrimonial": "PAT-G", "tipo_ativo": "AR_CONDICIONADO", "localizacao": localizacao.pk}]

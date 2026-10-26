@@ -1,3 +1,4 @@
+from django.db import transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, status
 from rest_framework.views import APIView
@@ -19,7 +20,7 @@ from ordem_servico.transicoes import RegraTransicaoError
 from ordem_servico.indicadores import PeriodoInvalidoError, calcular_indicadores_gerenciais, resolver_periodo
 from evidencia_os.models import EvidenciaOrdem
 from evidencia_os.serializers import EvidenciaOrdemSerializer
-from evidencia_os.services import EvidenciaError, anexar_evidencias
+from evidencia_os.services import EvidenciaError, anexar_evidencias, validar_lote
 from ordem_servico.serializers import AbrirOrdemServicoSerializer, OrdemServicoSerializer, AtribuirTecnicoSerializer
 from usuario.models import Usuario
 from utils.responses import resposta_sucesso, resposta_erro, resposta_conflito
@@ -92,12 +93,25 @@ class OrdemServicoListCreateView(generics.ListCreateAPIView):
         serializer = AbrirOrdemServicoSerializer(data=request.data, context=contexto)
 
         if serializer.is_valid():
+            # Imagens anexadas na abertura (inclusive anônima) chegam no campo "arquivos" do multipart.
+            arquivos = request.FILES.getlist('arquivos')
+            if arquivos:
+                try:
+                    validar_lote(arquivos, 0)
+                except EvidenciaError as erro:
+                    return resposta_erro(erro.mensagem, {'arquivos': [erro.mensagem]}, erro.status_code)
+
             try:
-                ordem_servico = OrdemServicoFacade().abrir(usuario_autenticado, serializer.validated_data)
+                with transaction.atomic():
+                    ordem_servico = OrdemServicoFacade().abrir(usuario_autenticado, serializer.validated_data)
+                    if arquivos:
+                        anexar_evidencias(ordem_servico, usuario_autenticado, arquivos)
             except CorretivaDuplicadaError as erro:
                 if erro.ordem_existente is None:
                     return resposta_erro(erro.mensagem, {"ativo": [erro.mensagem]}, status.HTTP_409_CONFLICT)
                 return _resposta_duplicidade(erro.ordem_existente, usuario_autenticado, erro.mensagem)
+            except EvidenciaError as erro:
+                return resposta_erro(erro.mensagem, {'arquivos': [erro.mensagem]}, erro.status_code)
 
             return resposta_sucesso("Ordem de serviço aberta com sucesso.", OrdemServicoSerializer(ordem_servico, context={'request': request}).data, status.HTTP_201_CREATED)
 

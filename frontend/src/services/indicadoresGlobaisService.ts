@@ -27,13 +27,12 @@ function normalizarErro(error: unknown): ErroGlobais {
 
 /** CA1: uma única chamada devolve todos os indicadores para o mesmo intervalo. */
 export async function buscarIndicadoresGlobais(consulta: ConsultaIndicadores): Promise<IndicadoresGlobais> {
-  const params: Record<string, string> = { periodo: consulta.periodo }
-  if (consulta.periodo === 'personalizado') {
-    params.data_inicio = consulta.inicio ?? ''
-    params.data_fim = consulta.fim ?? ''
-  }
+  // Intervalo personalizado: o backend usa "inicio"/"fim" (AAAA-MM-DD) no lugar do período.
+  const params: Record<string, string> = consulta.periodo === 'personalizado'
+    ? { inicio: consulta.inicio ?? '', fim: consulta.fim ?? '' }
+    : { periodo: consulta.periodo }
   try {
-    const { data } = await api.get('/ordem-servico/dashboard/indicadores-globais/', { params })
+    const { data } = await api.get('/ordem-servico/indicadores-gerenciais/', { params })
     return normalizarIndicadoresGlobais(data?.dados ?? data)
   } catch (e) {
     throw new IndicadoresGlobaisError(normalizarErro(e))

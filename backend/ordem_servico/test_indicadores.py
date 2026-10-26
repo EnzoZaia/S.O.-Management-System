@@ -82,6 +82,7 @@ def test_indicadores_gerenciais_globais(base_gerencial):
     assert dados["usuarios_afetados"] == 3 + 1 + 1
     assert dados["distribuicao_por_ativo"][0] == {"id_ativo": dados["distribuicao_por_ativo"][0]["id_ativo"], "codigo_patrimonial": "PAT-IND", "tipo_ativo": "AR_CONDICIONADO", "total": 2}
     assert dados["predios_mais_ocorrencias"][0]["predio_nome"] == "Bloco Central"
+    assert sum(p["total_afetados"] for p in dados["predios_mais_ocorrencias"]) == dados["usuarios_afetados"]
     assert dados["distribuicao_por_localizacao"][0]["total"] == 3
     assert dados["saude_ativos"]["total_ativos"] == 1
 

@@ -72,42 +72,61 @@ function normalizarDistribuicao(lista: unknown, montar: (r: any, i: number) => I
   return ordenar(lista.map(montar)).slice(0, TOP_DISTRIBUICAO)
 }
 
-/** Aceita o payload cru do backend e devolve um objeto completo e tipado. */
+const ROTULO_TIPO_ATIVO: Record<string, string> = { AR_CONDICIONADO: 'Ar-condicionado', BEBEDOURO: 'Bebedouro' }
+
+/** Data local (AAAA-MM-DD) de um instante ISO; `fimExclusivo` volta um dia quando o limite cai à meia-noite. */
+function dataLocal(iso: unknown, fimExclusivo = false): string | null {
+  if (typeof iso !== 'string' || !iso) return null
+  if (iso.length <= 10) return iso
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return null
+  if (fimExclusivo && d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0) d.setDate(d.getDate() - 1)
+  const mes = String(d.getMonth() + 1).padStart(2, '0')
+  const dia = String(d.getDate()).padStart(2, '0')
+  return `${d.getFullYear()}-${mes}-${dia}`
+}
+
+const primeiro = (...valores: unknown[]) => valores.find((v) => v !== undefined && v !== null)
+
+/** Aceita o payload de GET /ordem-servico/indicadores-gerenciais/ e devolve um objeto completo e tipado. */
 export function normalizarIndicadoresGlobais(bruto: any): IndicadoresGlobais {
   const d = bruto ?? {}
 
-  const porPredio: PredioOcorrencias[] = Array.isArray(d.por_predio)
-    ? d.por_predio
+  const listaPredios = d.predios_mais_ocorrencias ?? d.por_predio
+  const porPredio: PredioOcorrencias[] = Array.isArray(listaPredios)
+    ? listaPredios
         .map((r: any, i: number) => ({
           chave: r?.id_predio ?? i,
-          nome: String(r?.nome_predio ?? r?.nome ?? 'Prédio'),
+          nome: String(r?.predio_nome ?? r?.nome_predio ?? r?.nome ?? 'Prédio'),
           totalOcorrencias: num(r?.total_ocorrencias ?? r?.total),
           totalAfetados: num(r?.total_afetados),
         }))
         .sort((a: PredioOcorrencias, b: PredioOcorrencias) => b.totalOcorrencias - a.totalOcorrencias)
     : []
 
+  const afetados = primeiro(d.usuarios_afetados, d.total_afetados)
+
   return {
-    intervalo: { inicio: d.periodo?.inicio ?? null, fim: d.periodo?.fim ?? null },
-    totalOrdens: num(d.total_ordens),
+    intervalo: { inicio: dataLocal(d.periodo?.inicio), fim: dataLocal(d.periodo?.fim, true) },
+    totalOrdens: num(primeiro(d.volume_total, d.total_ordens)),
     backlogAtivo: num(d.backlog_ativo),
     mttrHoras: numOuNulo(d.mttr_horas),
-    resolucaoPrimeiraIntervencao: numOuNulo(d.resolucao_primeira_intervencao),
+    resolucaoPrimeiraIntervencao: numOuNulo(primeiro(d.taxa_resolucao_primeira_intervencao, d.resolucao_primeira_intervencao)),
     satisfacaoMedia: numOuNulo(d.satisfacao_media),
     totalAvaliacoes: num(d.total_avaliacoes),
-    reincidencia: numOuNulo(d.reincidencia),
-    totalAfetados: d.total_afetados !== undefined && d.total_afetados !== null
-      ? num(d.total_afetados)
+    reincidencia: numOuNulo(primeiro(d.taxa_reincidencia, d.reincidencia)),
+    totalAfetados: afetados !== undefined
+      ? num(afetados)
       : porPredio.reduce((soma, p) => soma + p.totalAfetados, 0),
-    porAtivo: normalizarDistribuicao(d.por_ativo, (r, i) => ({
+    porAtivo: normalizarDistribuicao(d.distribuicao_por_ativo ?? d.por_ativo, (r, i) => ({
       chave: r?.id_ativo ?? r?.codigo_patrimonial ?? i,
-      rotulo: String(r?.nome ?? r?.codigo_patrimonial ?? 'Ativo'),
+      rotulo: String(r?.nome ?? ROTULO_TIPO_ATIVO[r?.tipo_ativo] ?? r?.codigo_patrimonial ?? 'Ativo'),
       detalhe: r?.codigo_patrimonial ? `PAT: ${r.codigo_patrimonial}` : null,
       total: num(r?.total),
     })),
-    porLocalizacao: normalizarDistribuicao(d.por_localizacao, (r, i) => ({
+    porLocalizacao: normalizarDistribuicao(d.distribuicao_por_localizacao ?? d.por_localizacao, (r, i) => ({
       chave: r?.id_localizacao ?? i,
-      rotulo: String(r?.nome ?? r?.desc_localizacao ?? 'Local'),
+      rotulo: String(r?.localizacao_nome ?? r?.nome ?? r?.desc_localizacao ?? 'Local'),
       detalhe: r?.predio_nome ?? null,
       total: num(r?.total),
     })),

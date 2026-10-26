@@ -21,7 +21,8 @@ class EvidenciaOrdem(models.Model):
 
     ordem_servico = models.ForeignKey(OrdemServico, on_delete=models.CASCADE, db_column='ordem_servico_id', related_name='evidencias')
 
-    usuario = models.ForeignKey(Usuario, on_delete=models.DO_NOTHING, db_column='usuario_id', related_name='evidencias_enviadas')
+    # Nulo quando a evidência vem de uma abertura anônima (aluno/funcionário sem login).
+    usuario = models.ForeignKey(Usuario, on_delete=models.DO_NOTHING, db_column='usuario_id', related_name='evidencias_enviadas', null=True, blank=True)
 
     sequencia = models.IntegerField()
     tipo_arquivo = models.CharField(max_length=10)

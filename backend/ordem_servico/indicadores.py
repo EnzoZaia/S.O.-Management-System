@@ -144,7 +144,7 @@ def calcular_indicadores_gerenciais(periodo):
     )
     por_predio = (
         abertas.values('localizacao__predio_id', 'localizacao__predio__nome_predio')
-        .annotate(total=Count('id_ordem_servico'))
+        .annotate(total=Count('id_ordem_servico'), total_afetados=Sum('total_afetados_anotado'))
         .order_by('-total', 'localizacao__predio__nome_predio')[:5]
     )
 
@@ -180,7 +180,7 @@ def calcular_indicadores_gerenciais(periodo):
             for item in por_localizacao
         ],
         'predios_mais_ocorrencias': [
-            {'id_predio': item['localizacao__predio_id'], 'predio_nome': item['localizacao__predio__nome_predio'], 'total': item['total']}
+            {'id_predio': item['localizacao__predio_id'], 'predio_nome': item['localizacao__predio__nome_predio'], 'total': item['total'], 'total_afetados': item['total_afetados'] or 0}
             for item in por_predio
         ],
         'saude_ativos': {

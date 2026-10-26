@@ -111,7 +111,6 @@ export function acoesPermitidas(os: Pick<OrdemPortal, 'status_ordem_servico'>) {
   const s = os.status_ordem_servico
   return {
     validar: s === 'AGUARDANDO_VALIDACAO',
-    evidencia: ['APROVADA', 'EM_EXECUCAO', 'AGUARDANDO_MATERIAL', 'AGUARDANDO_TERCEIRO', 'AGUARDANDO_VALIDACAO'].includes(s),
     avaliar: s === 'CONCLUIDA' || s === 'ENCERRADA',
   }
 }

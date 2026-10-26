@@ -7,11 +7,14 @@ from django.db.models import Max
 from django.utils import timezone
 
 from evidencia_os.models import TIPO_IMAGEM, TIPO_VIDEO, EvidenciaOrdem
-from ordem_servico.constantes import STATUS_ATIVOS, status_para_api
+from ordem_servico.constantes import EM_TRIAGEM, status_para_api
 from ordem_servico.models import OrdemServico
 from utils.historico import registrar_historico
 
 MB = 1024 * 1024
+
+# Evidências só entram na abertura da OS: depois da triagem (aprovação) o envio é bloqueado.
+STATUS_ACEITA_EVIDENCIA = (EM_TRIAGEM,)
 
 ASSINATURAS = {
     'jpg': ('image/jpeg', TIPO_IMAGEM),
@@ -114,9 +117,9 @@ def validar_lote(arquivos, ja_enviadas):
 def anexar_evidencias(ordem_servico, usuario, arquivos):
     ordem_servico = OrdemServico.objects.select_for_update().get(pk=ordem_servico.pk)
 
-    if ordem_servico.status_ordem_servico not in STATUS_ATIVOS:
+    if ordem_servico.status_ordem_servico not in STATUS_ACEITA_EVIDENCIA:
         raise EvidenciaError(
-            "Esta ordem não aceita novas evidências nesta etapa "
+            "As evidências só podem ser anexadas na abertura da ordem, antes da triagem "
             f"(status atual: {status_para_api(ordem_servico.status_ordem_servico)}).",
             409,
         )
@@ -140,5 +143,6 @@ def anexar_evidencias(ordem_servico, usuario, arquivos):
             dt_envio=agora,
         ))
 
-    registrar_historico(ordem_servico, usuario, f"{usuario.nome} anexou {len(criadas)} evidência(s).")
+    autor = usuario.nome if usuario else "Solicitante anônimo"
+    registrar_historico(ordem_servico, usuario, f"{autor} anexou {len(criadas)} evidência(s).")
     return criadas

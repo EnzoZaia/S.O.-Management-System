@@ -152,7 +152,8 @@
             <div class="p-4 bg-gray-50 rounded-xl border border-gray-100 text-sm text-gray-700 whitespace-pre-wrap">{{
               extrairProblema(selecionada.descricao_servico) }}</div>
           </div>
-          <EvidenciasOrdem :id-ordem="selecionada.id_ordem_servico" :pode-enviar="acoes.evidencia" />
+          <!-- Evidências são anexadas só na tela de abertura da OS; aqui ficam apenas para visualização -->
+          <EvidenciasOrdem :id-ordem="selecionada.id_ordem_servico" somente-leitura />
           <div>
             <h3 class="text-sm font-bold text-gray-700 mb-4">⏱️ Histórico</h3>
             <div class="bg-gray-50/50 rounded-2xl border border-gray-100 p-5">
@@ -184,10 +185,6 @@
             Validar serviço executado</button>
           <div class="flex flex-wrap items-center justify-between gap-3">
             <div class="flex flex-wrap gap-2">
-              <button v-if="acoes.evidencia"
-                class="px-4 py-2 text-xs font-bold text-indigo-600 bg-white border border-indigo-200 hover:bg-indigo-50 rounded-lg cursor-pointer">
-                📎 Anexar evidência
-              </button>
               <button v-if="acoes.avaliar" @click="irParaAvaliacao(selecionada.id_ordem_servico)"
                 class="px-4 py-2 text-xs font-bold text-amber-600 bg-white border border-amber-200 hover:bg-amber-50 rounded-lg cursor-pointer">⭐
                 {{ avaliacao ? 'Ver minha avaliação' : 'Avaliar atendimento' }}</button>
@@ -248,7 +245,7 @@ const filtros: { valor: FiltroStatusPortal; rotulo: string }[] = [
   { valor: 'FINALIZADAS', rotulo: 'Finalizadas' },
 ]
 
-const acoes = computed(() => (selecionada.value ? acoesPermitidas(selecionada.value) : { validar: false, evidencia: false, avaliar: false }))
+const acoes = computed(() => (selecionada.value ? acoesPermitidas(selecionada.value) : { validar: false, avaliar: false }))
 
 function contagem(f: FiltroStatusPortal) {
   return ordens.value.filter((o) => pertenceAoFiltro(o, f)).length

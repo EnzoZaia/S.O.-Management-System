@@ -40,7 +40,7 @@ from inteligencia.views import AssistenteTecnicoView, TechOrderIntelligenceView
 from predio.views import PredioListCreateView, PredioRetrieveUpdateDestroyView
 from authentication.views import TokenObtainPairView, TokenRefreshView
 from rest_framework_simplejwt.views import TokenVerifyView
-from ativo.views import AtivoListCreateView, AtivoRetrieveUpdateDestroyView, AtivoHistoricoView, AtivoSaudeListView, AtivoSaudeView
+from ativo.views import AtivoListCreateView, AtivoRetrieveUpdateDestroyView, AtivoHistoricoView, AtivoSaudeListView, AtivoSaudeView, AtivoPublicoListView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -94,6 +94,7 @@ urlpatterns = [
     path('ativo/', AtivoListCreateView.as_view(), name='ativo-list-create'),
     path('ativo/<int:pk>/', AtivoRetrieveUpdateDestroyView.as_view(), name='ativo-detail-view'),
 
+    path('ativo/publico/', AtivoPublicoListView.as_view(), name='ativo-publico-list'),
     path('ativo/saude/', AtivoSaudeListView.as_view(), name='ativo-saude-list'),
     path('ativo/<int:pk>/saude/', AtivoSaudeView.as_view(), name='ativo-saude'),
     path('ativo/<int:pk>/historico/', AtivoHistoricoView.as_view(), name='ativo-historico'),

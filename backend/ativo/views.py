@@ -1,6 +1,6 @@
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, status
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 
 from ativo.models import Ativo
 from ativo.saude import saude_dos_ativos
@@ -127,3 +127,20 @@ class AtivoSaudeView(APIView):
     def get(self, request, pk):
         ativo = get_object_or_404(Ativo, pk=pk)
         return resposta_sucesso("Saúde do ativo calculada com sucesso.", saude_dos_ativos([ativo])[0])
+
+
+class AtivoPublicoListView(APIView):
+    """Equipamentos para a abertura anônima de OS: só o necessário para escolher o ativo da sala."""
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        ativos = Ativo.objects.order_by('id_ativo')
+        localizacao = request.query_params.get('localizacao')
+        if localizacao:
+            ativos = ativos.filter(localizacao_id=localizacao)
+        dados = [
+            {'id_ativo': id_ativo, 'codigo_patrimonial': codigo, 'tipo_ativo': tipo, 'localizacao': id_localizacao}
+            for id_ativo, codigo, tipo, id_localizacao in ativos.values_list('id_ativo', 'codigo_patrimonial', 'tipo_ativo', 'localizacao_id')
+        ]
+        return resposta_sucesso("Ativos listados com sucesso.", dados)

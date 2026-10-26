@@ -37,7 +37,7 @@ Endpoint: `GET /ordem-servico/indicadores-gerenciais/`. Acesso exclusivo do perf
 | `usuarios_afetados` | soma, nas OS abertas no período, do solicitante original mais os participantes (US05); cada pessoa conta uma vez por OS e o solicitante não é contado de novo como participante |
 | `distribuicao_por_ativo` | top 10 ativos por quantidade de OS abertas no período |
 | `distribuicao_por_localizacao` | top 10 salas por quantidade de OS abertas no período |
-| `predios_mais_ocorrencias` | top 5 prédios por quantidade de OS abertas no período |
+| `predios_mais_ocorrencias` | top 5 prédios por quantidade de OS abertas no período, com `total_afetados` (mesma regra de `usuarios_afetados`, por prédio) |
 | `saude_ativos` | situação atual do Health Score (US17) de todos os ativos: quantidade por classificação e nota média; não depende do período |
 
 Uma corretiva concluída tem **retrabalho** quando passou por pelo menos um destes casos:
