@@ -211,6 +211,11 @@
             </p>
             <div class="p-4 bg-gray-50 rounded-xl border border-gray-100 text-sm text-gray-700 whitespace-pre-wrap">{{ extrairProblema(osSelecionada?.descricao_servico) }}</div>
           </div>
+
+          <!-- Evidências anexadas na abertura da OS (somente visualização) -->
+          <div v-if="osSelecionada && osSelecionada.tipo_manutencao !== 'PREVENTIVA'" class="mt-6">
+            <EvidenciasOrdem :id-ordem="osSelecionada.id_ordem_servico" somente-leitura />
+          </div>
         </div>
 
         <div class="p-5 border-t border-gray-100 bg-gray-50 flex justify-end shrink-0">
@@ -226,6 +231,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import api from '@/services/api'
+import EvidenciasOrdem from '@/components/EvidenciasOrdem.vue'
 
 const abaAtiva = ref('CORRETIVA')
 

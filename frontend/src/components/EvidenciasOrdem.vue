@@ -44,7 +44,7 @@
           </button>
         </div>
       </div>
-      <p v-else class="text-[11px] text-gray-400 font-semibold border-t border-gray-100 pt-3">
+      <p v-else-if="!somenteLeitura" class="text-[11px] text-gray-400 font-semibold border-t border-gray-100 pt-3">
         O envio de evidências não está disponível na etapa atual desta ordem.
       </p>
     </div>
@@ -59,7 +59,11 @@ import type { EvidenciaOrdem } from '@/types/portal'
 import { formatarDataHora } from '@/utils/statusOrdem'
 import { ACCEPT_EVIDENCIAS, DESCRICAO_LIMITES, validarArquivosEvidencia } from '@/utils/validacaoEvidencia'
 
-const props = defineProps<{ idOrdem: number; podeEnviar: boolean }>()
+// somenteLeitura: perfis que apenas visualizam (técnico, gestor, gerente) não veem a área de envio nem o aviso de bloqueio.
+const props = withDefaults(
+  defineProps<{ idOrdem: number; podeEnviar?: boolean; somenteLeitura?: boolean }>(),
+  { podeEnviar: false, somenteLeitura: false },
+)
 
 const evidencias = ref<EvidenciaOrdem[]>([])
 const selecionados = ref<File[]>([])

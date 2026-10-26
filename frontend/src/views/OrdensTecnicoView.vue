@@ -189,6 +189,11 @@
             <p class="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2">Descrição do Problema Reportado</p>
             <div class="p-4 bg-gray-50 rounded-xl border border-gray-100 text-sm text-gray-700 whitespace-pre-wrap">{{ extrairProblema(osSelecionada?.descricao_servico) }}</div>
           </div>
+
+          <!-- Evidências anexadas na abertura da OS (somente visualização) -->
+          <div v-if="osSelecionada && osSelecionada.tipo_manutencao !== 'PREVENTIVA'" class="mt-6">
+            <EvidenciasOrdem :id-ordem="osSelecionada.id_ordem_servico" somente-leitura />
+          </div>
         </div>
 
         <div class="p-6 border-t border-gray-100 bg-gray-50 flex flex-col rounded-b-2xl shrink-0">
@@ -240,6 +245,7 @@ import ApontamentoTempo from '@/components/ApontamentoTempo.vue'
 import GuiaChecklistPreventiva from '@/components/GuiaChecklistPreventiva.vue'
 import ConclusaoCorretivaForm from '@/components/ConclusaoCorretivaForm.vue'
 import PausaOrdemForm from '@/components/PausaOrdemForm.vue'
+import EvidenciasOrdem from '@/components/EvidenciasOrdem.vue'
 import { ExecucaoError, concluirExecucao, iniciarExecucao, pausarExecucao } from '@/services/execucaoService'
 import type { DadosConclusao, DadosPausa, ErroExecucao, ErrosConclusao, RespostaExecucao } from '@/types/execucao'
 

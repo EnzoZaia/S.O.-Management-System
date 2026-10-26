@@ -214,6 +214,11 @@
             </div>
           </div>
 
+          <!-- Evidências anexadas na abertura da OS (somente visualização); ficam antes da triagem para apoiar a decisão -->
+          <div v-if="osSelecionada && osSelecionada.tipo_manutencao !== 'PREVENTIVA'" class="mt-6">
+            <EvidenciasOrdem :id-ordem="osSelecionada.id_ordem_servico" somente-leitura />
+          </div>
+
           <!-- US09: painel de triagem -->
           <div v-if="osSelecionada?.status_ordem_servico === 'ABERTA'" data-testid="painel-triagem"
             class="mt-6 rounded-2xl border border-blue-100 bg-blue-50/40 p-5 space-y-4">
@@ -313,6 +318,7 @@
 import { ref, computed, onMounted } from 'vue'
 import api from '@/services/api'
 import Swal from 'sweetalert2'
+import EvidenciasOrdem from '@/components/EvidenciasOrdem.vue'
 import { TriagemError, decidirTriagem } from '@/services/triagemService'
 import type { DecisaoTriagem, ErroTriagem, ErrosTriagem, FormularioTriagem } from '@/types/triagem'
 import {
