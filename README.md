@@ -222,8 +222,8 @@ npm install
 
 Projeto desenvolvido pelos alunos do curso de **Sistemas de Informação – FHO**
 
-- Arthur Peixoto Lacerda (Banco de Dados)
-- Enzo Zaia Soares (Front-end)
-- Guilherme Henrique Cavarsan (Back-End)
-- Octavio Thim Dias (Engenheiro de Software)
-- Rodolfo Henrique Ribeiro Zanchetta (Scrum master)
+- Arthur Peixoto Lacerda (Desenvolvimento Front-end e UX)
+- Enzo Zaia Soares (Arquiteto de Software e DBA)
+- Guilherme Henrique Cavarsan (Desenvolvimento Back-end)
+- Octavio Thim Dias (Product Owner e Business Analyst)
+- Rodolfo Henrique Ribeiro Zanchetta (QA/Scrum Master e Engenheiro de IA e Dados)
