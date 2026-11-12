@@ -1,15 +1,27 @@
+import json
 import logging
+import socket
 import threading
+import urllib.error
+import urllib.request
 
-import anthropic
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
-MODELOS_COM_FALLBACK = {'claude-opus-5-5', 'claude-opus-5', 'claude-fable-5-1', 'claude-sonnet-5-5'}
-BETA_FALLBACK = 'server-side-fallback-2026-07-01'
 MENSAGEM_INDISPONIVEL = "O serviço de inteligência artificial está indisponível no momento. Tente novamente mais tarde."
 MENSAGEM_NAO_CONFIGURADO = "O serviço de inteligência artificial não está configurado neste ambiente."
+MENSAGEM_INVALIDA = "O serviço de inteligência artificial retornou uma resposta vazia ou inválida."
+MENSAGEM_BLOQUEADA = "O serviço de inteligência artificial não pôde responder a esta solicitação."
+
+PROVEDOR_GEMINI = 'gemini'
+PROVEDOR_GROK = 'grok'
+
+URL_GEMINI = "https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent"
+URL_GROK = "https://api.x.ai/v1/chat/completions"
+
+MOTIVOS_BLOQUEIO_GEMINI = {'SAFETY', 'PROHIBITED_CONTENT', 'BLOCKLIST', 'SPII', 'RECITATION', 'IMAGE_SAFETY'}
+STATUS_HTTP_REPETIVEIS = {408, 429, 500, 502, 503, 504}
 
 
 class IAIndisponivelError(Exception):
@@ -19,14 +31,66 @@ class IAIndisponivelError(Exception):
         self.invalida = invalida
 
 
+class FalhaTransporte(Exception):
+    def __init__(self, status=None):
+        super().__init__(f"Falha HTTP {status}" if status else "Falha de conexão")
+        self.status = status
+
+
+def enviar_http(url, cabecalhos, corpo, timeout):
+    requisicao = urllib.request.Request(
+        url,
+        data=json.dumps(corpo).encode('utf-8'),
+        headers={'Content-Type': 'application/json', **cabecalhos},
+        method='POST',
+    )
+    try:
+        with urllib.request.urlopen(requisicao, timeout=timeout) as resposta:
+            return json.loads(resposta.read().decode('utf-8'))
+    except urllib.error.HTTPError as erro:
+        raise FalhaTransporte(erro.code) from erro
+    except (urllib.error.URLError, TimeoutError, socket.timeout, ConnectionError, ValueError) as erro:
+        raise FalhaTransporte() from erro
+
+
+def _partes_gemini(conteudo):
+    if isinstance(conteudo, str):
+        return [{'text': conteudo}]
+    partes = []
+    for bloco in conteudo:
+        if bloco.get('type') == 'document':
+            fonte = bloco['source']
+            if fonte['type'] == 'base64':
+                partes.append({'inline_data': {'mime_type': fonte['media_type'], 'data': fonte['data']}})
+            else:
+                partes.append({'text': f"Documento: {bloco.get('title', '')}\n{fonte['data']}"})
+        else:
+            partes.append({'text': bloco.get('text', '')})
+    return partes
+
+
+def _texto_grok(conteudo):
+    if isinstance(conteudo, str):
+        return conteudo
+    trechos = []
+    for bloco in conteudo:
+        if bloco.get('type') == 'document':
+            fonte = bloco['source']
+            if fonte['type'] == 'base64':
+                trechos.append(f"[Manual em PDF \"{bloco.get('title', '')}\" não pôde ser enviado a este provedor.]")
+            else:
+                trechos.append(f"Documento: {bloco.get('title', '')}\n{fonte['data']}")
+        else:
+            trechos.append(bloco.get('text', ''))
+    return '\n\n'.join(trechos)
+
+
 class ClienteIA:
-    PROVEDOR = 'anthropic'
     _instancia = None
     _trava = threading.Lock()
 
-    def __init__(self, fabrica_cliente=None):
-        self._fabrica_cliente = fabrica_cliente or self._criar_cliente_anthropic
-        self._cliente = None
+    def __init__(self, transporte=None):
+        self._transporte = transporte or enviar_http
 
     @classmethod
     def instancia(cls):
@@ -40,68 +104,82 @@ class ClienteIA:
         with cls._trava:
             cls._instancia = None
 
-    @staticmethod
-    def configurado():
-        return bool(settings.ANTHROPIC_API_KEY)
+    @property
+    def provedor(self):
+        return (settings.IA_PROVEDOR or PROVEDOR_GEMINI).strip().lower()
 
     @property
     def modelo(self):
-        return settings.ANTHROPIC_MODEL
+        if self.provedor == PROVEDOR_GROK:
+            return settings.GROK_MODEL
+        return settings.GEMINI_MODEL
 
-    @staticmethod
-    def _criar_cliente_anthropic():
-        return anthropic.Anthropic(
-            api_key=settings.ANTHROPIC_API_KEY,
-            timeout=settings.ANTHROPIC_TIMEOUT_SEGUNDOS,
-            max_retries=settings.ANTHROPIC_MAX_RETRIES,
-        )
+    def _chave(self):
+        if self.provedor == PROVEDOR_GROK:
+            return settings.GROK_API_KEY
+        return settings.GEMINI_API_KEY
 
-    def _obter_cliente(self):
-        if self._cliente is None:
-            self._cliente = self._fabrica_cliente()
-        return self._cliente
+    def configurado(self):
+        return self.provedor in (PROVEDOR_GEMINI, PROVEDOR_GROK) and bool(self._chave())
+
+    def _montar_requisicao(self, sistema, conteudo, max_tokens):
+        if self.provedor == PROVEDOR_GROK:
+            return URL_GROK, {'Authorization': f"Bearer {self._chave()}"}, {
+                'model': self.modelo,
+                'max_tokens': max_tokens,
+                'temperature': 0.3,
+                'messages': [
+                    {'role': 'system', 'content': sistema},
+                    {'role': 'user', 'content': _texto_grok(conteudo)},
+                ],
+            }
+        return URL_GEMINI.format(modelo=self.modelo), {'x-goog-api-key': self._chave()}, {
+            'system_instruction': {'parts': [{'text': sistema}]},
+            'contents': [{'role': 'user', 'parts': _partes_gemini(conteudo)}],
+            'generationConfig': {'maxOutputTokens': max_tokens, 'temperature': 0.3},
+        }
+
+    def _chamar(self, url, cabecalhos, corpo):
+        tentativas = 1 + max(settings.IA_MAX_RETRIES, 0)
+        for tentativa in range(1, tentativas + 1):
+            try:
+                return self._transporte(url, cabecalhos, corpo, settings.IA_TIMEOUT_SEGUNDOS)
+            except FalhaTransporte as erro:
+                repetivel = erro.status is None or erro.status in STATUS_HTTP_REPETIVEIS
+                logger.warning("Falha na chamada ao provedor de IA %s (tentativa %s): %s", self.provedor, tentativa, erro)
+                if not repetivel or tentativa == tentativas:
+                    raise IAIndisponivelError() from erro
+
+    def _extrair_gemini(self, dados):
+        if (dados.get('promptFeedback') or {}).get('blockReason'):
+            raise IAIndisponivelError(MENSAGEM_BLOQUEADA, invalida=True)
+        candidatos = dados.get('candidates') or []
+        if not candidatos:
+            raise IAIndisponivelError(MENSAGEM_INVALIDA, invalida=True)
+        candidato = candidatos[0]
+        if candidato.get('finishReason') in MOTIVOS_BLOQUEIO_GEMINI:
+            raise IAIndisponivelError(MENSAGEM_BLOQUEADA, invalida=True)
+        partes = (candidato.get('content') or {}).get('parts') or []
+        return '\n'.join(parte['text'] for parte in partes if parte.get('text') and not parte.get('thought')).strip()
+
+    def _extrair_grok(self, dados):
+        escolhas = dados.get('choices') or []
+        if not escolhas:
+            raise IAIndisponivelError(MENSAGEM_INVALIDA, invalida=True)
+        if escolhas[0].get('finish_reason') == 'content_filter':
+            raise IAIndisponivelError(MENSAGEM_BLOQUEADA, invalida=True)
+        return str((escolhas[0].get('message') or {}).get('content') or '').strip()
 
     def gerar(self, sistema, conteudo, max_tokens=None):
         if not self.configurado():
             raise IAIndisponivelError(MENSAGEM_NAO_CONFIGURADO)
 
-        parametros = {
-            'model': self.modelo,
-            'max_tokens': max_tokens or settings.ANTHROPIC_MAX_TOKENS,
-            'system': sistema,
-            'messages': [{'role': 'user', 'content': conteudo}],
-            'output_config': {'effort': 'medium'},
-        }
+        url, cabecalhos, corpo = self._montar_requisicao(sistema, conteudo, max_tokens or settings.IA_MAX_TOKENS)
+        dados = self._chamar(url, cabecalhos, corpo)
+        if not isinstance(dados, dict):
+            raise IAIndisponivelError(MENSAGEM_INVALIDA, invalida=True)
 
-        try:
-            cliente = self._obter_cliente()
-            if self.modelo in MODELOS_COM_FALLBACK:
-                resposta = cliente.beta.messages.create(betas=[BETA_FALLBACK], fallbacks='default', **parametros)
-            else:
-                resposta = cliente.messages.create(**parametros)
-        except anthropic.APITimeoutError as erro:
-            logger.warning("Tempo esgotado na chamada ao provedor de IA: %s", erro)
-            raise IAIndisponivelError() from erro
-        except anthropic.APIConnectionError as erro:
-            logger.warning("Falha de conexão com o provedor de IA: %s", erro)
-            raise IAIndisponivelError() from erro
-        except anthropic.RateLimitError as erro:
-            logger.warning("Limite de uso do provedor de IA atingido: %s", erro)
-            raise IAIndisponivelError() from erro
-        except anthropic.APIStatusError as erro:
-            logger.warning("Provedor de IA respondeu com erro %s: %s", erro.status_code, erro)
-            raise IAIndisponivelError() from erro
-        except anthropic.AnthropicError as erro:
-            logger.warning("Erro do SDK do provedor de IA: %s", erro)
-            raise IAIndisponivelError() from erro
-
-        if getattr(resposta, 'stop_reason', None) == 'refusal':
-            raise IAIndisponivelError("O serviço de inteligência artificial não pôde responder a esta solicitação.", invalida=True)
-
-        texto = '\n'.join(
-            bloco.text for bloco in getattr(resposta, 'content', []) or []
-            if getattr(bloco, 'type', None) == 'text' and getattr(bloco, 'text', None)
-        ).strip()
+        texto = self._extrair_grok(dados) if self.provedor == PROVEDOR_GROK else self._extrair_gemini(dados)
         if not texto:
-            raise IAIndisponivelError("O serviço de inteligência artificial retornou uma resposta vazia ou inválida.", invalida=True)
+            raise IAIndisponivelError(MENSAGEM_INVALIDA, invalida=True)
         return texto

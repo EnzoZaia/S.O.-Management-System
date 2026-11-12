@@ -1,45 +1,49 @@
+import base64
 import json
-from types import SimpleNamespace
 
-import anthropic
-import httpx2
 import pytest
 from rest_framework.test import APIClient
 
 from ativo.models import Ativo
-from inteligencia.cliente import ClienteIA, IAIndisponivelError
+from inteligencia.cliente import ClienteIA, FalhaTransporte, IAIndisponivelError
 from os_participante.models import OsParticipante
 from utils.apoio_testes import criar_localizacao, criar_os, criar_usuario
 
-REQUISICAO = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
 
-
-class _MensagensFalsas:
-    def __init__(self, dono):
-        self._dono = dono
-
-    def create(self, **parametros):
-        self._dono.chamadas.append(parametros)
-        if self._dono.erro is not None:
-            raise self._dono.erro
-        return self._dono.resposta
-
-
-class ClienteAnthropicFalso:
-    def __init__(self, texto="1. Desligue o disjuntor.\n2. Limpe o filtro.", erro=None, stop_reason="end_turn"):
+class TransporteFalso:
+    def __init__(self, texto="1. Desligue o disjuntor.\n2. Limpe o filtro.", erro=None, finish="STOP"):
         self.chamadas = []
         self.erro = erro
-        self.resposta = SimpleNamespace(stop_reason=stop_reason, content=[SimpleNamespace(type="text", text=texto)])
-        self.messages = _MensagensFalsas(self)
-        self.beta = SimpleNamespace(messages=_MensagensFalsas(self))
+        self.texto = texto
+        self.finish = finish
+
+    def __call__(self, url, cabecalhos, corpo, timeout):
+        self.chamadas.append({"url": url, "cabecalhos": cabecalhos, "corpo": corpo, "timeout": timeout})
+        if self.erro is not None:
+            raise self.erro
+        return {"candidates": [{"finishReason": self.finish, "content": {"parts": [{"text": self.texto}]}}]}
+
+
+def _partes(chamada):
+    return chamada["corpo"]["contents"][0]["parts"]
+
+
+def _texto(chamada):
+    return "\n".join(parte.get("text", "") for parte in _partes(chamada))
+
+
+def _sistema(chamada):
+    return chamada["corpo"]["system_instruction"]["parts"][0]["text"]
 
 
 @pytest.fixture
 def ia(settings, monkeypatch):
-    settings.ANTHROPIC_API_KEY = "chave-de-teste"
-    settings.ANTHROPIC_MODEL = "claude-opus-5-5"
-    falso = ClienteAnthropicFalso()
-    cliente = ClienteIA(fabrica_cliente=lambda: falso)
+    settings.IA_PROVEDOR = "gemini"
+    settings.GEMINI_API_KEY = "chave-de-teste"
+    settings.GEMINI_MODEL = "gemini-flash-latest"
+    settings.IA_MAX_RETRIES = 2
+    falso = TransporteFalso()
+    cliente = ClienteIA(transporte=falso)
     monkeypatch.setattr(ClienteIA, "instancia", classmethod(lambda cls: cliente))
     return falso
 
@@ -73,11 +77,11 @@ def test_tecnico_atribuido_consulta_com_contexto_do_ativo_e_aviso_de_falta_de_ma
     assert dados["base_conhecimento"]["possui_manual"] is False
     assert "Não há manual" in dados["aviso"]
     chamada = ia.chamadas[0]
-    assert chamada["model"] == "claude-opus-5-5"
-    assert chamada["fallbacks"] == "default"
-    conteudo = chamada["messages"][0]["content"]
+    assert "models/gemini-flash-latest:generateContent" in chamada["url"]
+    assert chamada["cabecalhos"]["x-goog-api-key"] == "chave-de-teste"
+    conteudo = _texto(chamada)
     assert "Springer" in conteudo and "Xtreme" in conteudo and "Como limpar o dreno" in conteudo
-    assert "não há base de conhecimento" in chamada["system"].lower()
+    assert "não há base de conhecimento" in _sistema(chamada).lower()
 
 
 @pytest.mark.parametrize("ator", ["solicitante", "outro_tecnico"])
@@ -102,9 +106,10 @@ def test_preventiva_e_pergunta_invalida(ia, os_corretiva):
 
 
 @pytest.mark.parametrize("erro", [
-    anthropic.APITimeoutError(request=REQUISICAO),
-    anthropic.APIConnectionError(request=REQUISICAO),
-    anthropic.InternalServerError("falha", response=httpx2.Response(500, request=REQUISICAO), body=None),
+    FalhaTransporte(),
+    FalhaTransporte(429),
+    FalhaTransporte(500),
+    FalhaTransporte(403),
 ])
 def test_falha_do_provedor_responde_503_amigavel_sem_bloquear(ia, os_corretiva, erro):
     ia.erro = erro
@@ -118,7 +123,8 @@ def test_falha_do_provedor_responde_503_amigavel_sem_bloquear(ia, os_corretiva, 
 
 
 def test_sem_chave_configurada_responde_indisponivel(settings, os_corretiva):
-    settings.ANTHROPIC_API_KEY = ""
+    settings.IA_PROVEDOR = "gemini"
+    settings.GEMINI_API_KEY = ""
     ClienteIA.resetar_instancia()
 
     resposta = _cliente(os_corretiva["tecnico"]).post(_url(os_corretiva), {"pergunta": "Como limpar o dreno entupido?"}, format="json")
@@ -128,28 +134,80 @@ def test_sem_chave_configurada_responde_indisponivel(settings, os_corretiva):
 
 
 def test_recusa_ou_resposta_vazia_vira_indisponivel(settings):
-    settings.ANTHROPIC_API_KEY = "chave"
-    for falso in (ClienteAnthropicFalso(stop_reason="refusal"), ClienteAnthropicFalso(texto="  ")):
-        with pytest.raises(IAIndisponivelError):
-            ClienteIA(fabrica_cliente=lambda f=falso: f).gerar("sistema", "conteudo")
+    settings.IA_PROVEDOR = "gemini"
+    settings.GEMINI_API_KEY = "chave"
+    for falso in (TransporteFalso(finish="SAFETY"), TransporteFalso(texto="  ")):
+        with pytest.raises(IAIndisponivelError) as erro:
+            ClienteIA(transporte=falso).gerar("sistema", "conteudo")
+        assert erro.value.invalida is True
 
 
-def test_modelo_sem_suporte_a_fallback_usa_chamada_simples(settings):
-    settings.ANTHROPIC_API_KEY = "chave"
-    settings.ANTHROPIC_MODEL = "claude-haiku-5-5"
-    falso = ClienteAnthropicFalso()
+def test_falha_temporaria_e_repetida_e_erro_de_cliente_nao(settings):
+    settings.IA_PROVEDOR = "gemini"
+    settings.GEMINI_API_KEY = "chave"
+    settings.IA_MAX_RETRIES = 2
 
-    ClienteIA(fabrica_cliente=lambda: falso).gerar("sistema", "conteudo")
+    temporaria = TransporteFalso(erro=FalhaTransporte(503))
+    with pytest.raises(IAIndisponivelError):
+        ClienteIA(transporte=temporaria).gerar("sistema", "conteudo")
+    assert len(temporaria.chamadas) == 3
 
-    assert "fallbacks" not in falso.chamadas[0]
-    assert falso.chamadas[0]["model"] == "claude-haiku-5-5"
+    definitiva = TransporteFalso(erro=FalhaTransporte(400))
+    with pytest.raises(IAIndisponivelError):
+        ClienteIA(transporte=definitiva).gerar("sistema", "conteudo")
+    assert len(definitiva.chamadas) == 1
+
+
+def test_pdf_do_manual_vai_como_inline_data_no_gemini(settings):
+    settings.IA_PROVEDOR = "gemini"
+    settings.GEMINI_API_KEY = "chave"
+    falso = TransporteFalso()
+    pdf = base64.b64encode(b"%PDF-1.4 manual").decode("ascii")
+    blocos = [
+        {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": pdf}, "title": "Manual"},
+        {"type": "text", "text": "Pergunta"},
+    ]
+
+    ClienteIA(transporte=falso).gerar("sistema", blocos)
+
+    partes = _partes(falso.chamadas[0])
+    assert partes[0] == {"inline_data": {"mime_type": "application/pdf", "data": pdf}}
+    assert partes[1] == {"text": "Pergunta"}
+
+
+def test_provedor_grok_usa_formato_de_chat_completions(settings):
+    settings.IA_PROVEDOR = "grok"
+    settings.GROK_API_KEY = "chave-grok"
+    settings.GROK_MODEL = "grok-4.3"
+    chamadas = []
+
+    def transporte(url, cabecalhos, corpo, timeout):
+        chamadas.append({"url": url, "cabecalhos": cabecalhos, "corpo": corpo})
+        return {"choices": [{"finish_reason": "stop", "message": {"content": "Resposta do Grok"}}]}
+
+    cliente = ClienteIA(transporte=transporte)
+    assert cliente.gerar("sistema", [{"type": "text", "text": "Pergunta"}]) == "Resposta do Grok"
+    assert cliente.provedor == "grok" and cliente.modelo == "grok-4.3"
+    chamada = chamadas[0]
+    assert chamada["url"] == "https://api.x.ai/v1/chat/completions"
+    assert chamada["cabecalhos"]["Authorization"] == "Bearer chave-grok"
+    assert chamada["corpo"]["model"] == "grok-4.3"
+    assert chamada["corpo"]["messages"] == [{"role": "system", "content": "sistema"}, {"role": "user", "content": "Pergunta"}]
+
+
+def test_provedor_desconhecido_fica_nao_configurado(settings):
+    settings.IA_PROVEDOR = "outro"
+    settings.GEMINI_API_KEY = "chave"
+    with pytest.raises(IAIndisponivelError) as erro:
+        ClienteIA(transporte=TransporteFalso()).gerar("sistema", "conteudo")
+    assert "não está configurado" in erro.value.mensagem
 
 
 def test_intelligence_envia_so_agregados_sem_dados_pessoais(ia, os_corretiva):
     gerente = criar_usuario("Gerente Secreto", "gerente.secreto@fho.edu.br", "GERENTE")
     participante = criar_usuario("Joao Particular", "joao.particular@fho.edu.br", "SOLICITANTE")
     OsParticipante.objects.create(ordem_servico=os_corretiva["os"], usuario=participante)
-    ia.resposta.content[0].text = "Resumo do período: 1 ordem aberta. Pontos de atenção: nenhum. Recomendações: manter."
+    ia.texto = "Resumo do período: 1 ordem aberta. Pontos de atenção: nenhum. Recomendações: manter."
 
     resposta = _cliente(gerente).post("/indicadores/intelligence/", {"periodo": "30d"}, format="json")
 
@@ -159,16 +217,16 @@ def test_intelligence_envia_so_agregados_sem_dados_pessoais(ia, os_corretiva):
     assert dados["indicadores_usados"]["indicadores"]["volume_total"] == 1
     assert dados["analise"].startswith("Resumo do período")
 
-    enviado = ia.chamadas[0]["messages"][0]["content"] + ia.chamadas[0]["system"]
+    enviado = _texto(ia.chamadas[0]) + _sistema(ia.chamadas[0])
     for proibido in ("Maria Sigilosa", "maria.sigilosa@fho.edu.br", "Joao Particular", "joao.particular", "Gerente Secreto", "Tec", "tec.ia@fho.edu.br"):
         assert proibido not in enviado
-    payload = json.loads(ia.chamadas[0]["messages"][0]["content"].split("\n", 1)[1])
+    payload = json.loads(_texto(ia.chamadas[0]).split("\n", 1)[1])
     assert set(payload) == {"periodo", "indicadores", "ocorrencias_por_tipo_de_ativo", "predios_mais_ocorrencias", "locais_mais_ocorrencias", "ativos_mais_ocorrencias"}
 
 
 def test_intelligence_falha_nao_afeta_indicadores_nativos(ia, os_corretiva):
     gerente = criar_usuario("Gerente", "gerente.ia@fho.edu.br", "GERENTE")
-    ia.erro = anthropic.APITimeoutError(request=REQUISICAO)
+    ia.erro = FalhaTransporte()
 
     falha = _cliente(gerente).post("/indicadores/intelligence/", {"periodo": "30d"}, format="json")
     nativos = _cliente(gerente).get("/ordem-servico/indicadores-gerenciais/?periodo=30d")
@@ -179,7 +237,7 @@ def test_intelligence_falha_nao_afeta_indicadores_nativos(ia, os_corretiva):
 
 def test_intelligence_resposta_invalida_e_permissao(ia, os_corretiva):
     gerente = criar_usuario("Gerente", "gerente2.ia@fho.edu.br", "GERENTE")
-    ia.resposta.content[0].text = "ok"
+    ia.texto = "ok"
 
     assert _cliente(gerente).post("/indicadores/intelligence/", {}, format="json").status_code == 503
     assert _cliente(os_corretiva["tecnico"]).post("/indicadores/intelligence/", {}, format="json").status_code == 403
@@ -202,10 +260,10 @@ def test_consulta_e_persistida_com_status_concluido_e_manual_lido(ia, os_correti
     dados = resposta.data["dados"]
     assert dados["aviso"] is None and dados["consulta_registrada"] is True
     assert [m["titulo"] for m in dados["base_conhecimento"]["manuais"]] == ["Manual Xtreme"]
-    blocos = ia.chamadas[0]["messages"][0]["content"]
-    assert blocos[0]["type"] == "document" and "ar comprimido" in blocos[0]["source"]["data"]
+    partes = _partes(ia.chamadas[0])
+    assert len(partes) == 2 and "Manual Xtreme" in partes[0]["text"] and "ar comprimido" in partes[0]["text"]
     consulta = ConsultaAssistenteIA.objects.get()
-    assert (consulta.status, consulta.manual_id, consulta.provedor_ia, consulta.modelo_ia) == ("CONCLUIDO", manual.pk, "anthropic", "claude-opus-5-5")
+    assert (consulta.status, consulta.manual_id, consulta.provedor_ia, consulta.modelo_ia) == ("CONCLUIDO", manual.pk, "gemini", "gemini-flash-latest")
     assert consulta.resposta.startswith("1. Desligue") and consulta.tecnico_id == os_corretiva["tecnico"].pk
 
 
@@ -218,11 +276,11 @@ def test_manual_inacessivel_usa_so_metadados_e_avisa(ia, os_corretiva):
     dados = _cliente(os_corretiva["tecnico"]).post(_url(os_corretiva), {"pergunta": "Como limpar o dreno entupido?"}, format="json").data["dados"]
 
     assert "não está acessível" in dados["aviso"]
-    assert isinstance(ia.chamadas[0]["messages"][0]["content"], str)
+    assert len(_partes(ia.chamadas[0])) == 1
 
 
 @pytest.mark.parametrize("erro, status_esperado", [
-    (anthropic.APITimeoutError(request=REQUISICAO), "INDISPONIVEL"),
+    (FalhaTransporte(), "INDISPONIVEL"),
     (None, "RESPOSTA_INVALIDA"),
 ])
 def test_falha_da_consulta_e_persistida_com_status(ia, os_corretiva, erro, status_esperado):
@@ -230,7 +288,7 @@ def test_falha_da_consulta_e_persistida_com_status(ia, os_corretiva, erro, statu
 
     ia.erro = erro
     if erro is None:
-        ia.resposta.stop_reason = "refusal"
+        ia.finish = "SAFETY"
 
     resposta = _cliente(os_corretiva["tecnico"]).post(_url(os_corretiva), {"pergunta": "Como limpar o dreno entupido?"}, format="json")
 
@@ -241,7 +299,7 @@ def test_falha_da_consulta_e_persistida_com_status(ia, os_corretiva, erro, statu
 def test_assistente_desabilitado_na_tabela_de_configuracao(ia, os_corretiva):
     from inteligencia.models import AssistenteTecnicoIA
 
-    AssistenteTecnicoIA.objects.create(provedor="anthropic", modelo="claude-opus-5-5", disponivel=False)
+    AssistenteTecnicoIA.objects.create(provedor="gemini", modelo="gemini-flash-latest", disponivel=False)
 
     resposta = _cliente(os_corretiva["tecnico"]).post(_url(os_corretiva), {"pergunta": "Como limpar o dreno entupido?"}, format="json")
 
@@ -265,12 +323,12 @@ def test_insight_e_indicadores_sao_persistidos(ia, os_corretiva):
     from inteligencia.models import IndicadorGerencial, InsightGerencial
 
     gerente = criar_usuario("Gerente", "gerente.persist@fho.edu.br", "GERENTE")
-    ia.resposta.content[0].text = "Resumo do período: 1 ordem aberta. Pontos de atenção: nenhum. Recomendações: manter."
+    ia.texto = "Resumo do período: 1 ordem aberta. Pontos de atenção: nenhum. Recomendações: manter."
 
     dados = _cliente(gerente).post("/indicadores/intelligence/", {"periodo": "30d"}, format="json").data["dados"]
 
     insight = InsightGerencial.objects.get(pk=dados["id_insight"])
-    assert (insight.status, insight.gerente_id, insight.provedor_ia) == ("CONCLUIDO", gerente.pk, "anthropic")
+    assert (insight.status, insight.gerente_id, insight.provedor_ia) == ("CONCLUIDO", gerente.pk, "gemini")
     assert insight.conteudo.startswith("Resumo do período")
     tipos = set(insight.indicadores.values_list("tipo", flat=True))
     assert {"VOLUME_TOTAL", "BACKLOG_ATIVO", "FILA_TRIAGEM", "USUARIOS_AFETADOS", "DISTRIBUICAO_POR_ATIVO", "DISTRIBUICAO_POR_LOCALIZACAO"} <= tipos
@@ -282,7 +340,7 @@ def test_insight_com_falha_fica_registrado_como_indisponivel(ia, os_corretiva):
     from inteligencia.models import InsightGerencial
 
     gerente = criar_usuario("Gerente", "gerente.falha@fho.edu.br", "GERENTE")
-    ia.erro = anthropic.APIConnectionError(request=REQUISICAO)
+    ia.erro = FalhaTransporte()
 
     assert _cliente(gerente).post("/indicadores/intelligence/", {}, format="json").status_code == 503
     insight = InsightGerencial.objects.get()

@@ -174,6 +174,11 @@
             </div>
           </div>
           
+          <div v-if="osSelecionada?.alerta_preventiva" role="alert" data-testid="alerta-preventiva"
+            class="mt-4 text-xs font-semibold text-purple-800 bg-purple-50 border border-purple-200 rounded-xl px-4 py-3">
+            🗓️ {{ osSelecionada.alerta_preventiva.mensagem }}
+          </div>
+
           <div class="mt-6">
             <ApontamentoTempo :id-ordem="osSelecionada.id_ordem_servico" :status="osSelecionada.status_ordem_servico"
               :versao="versaoApontamento" @carregado="inicioExecucao = $event" />
@@ -193,6 +198,10 @@
           <!-- Evidências anexadas na abertura da OS (somente visualização) -->
           <div v-if="osSelecionada && osSelecionada.tipo_manutencao !== 'PREVENTIVA'" class="mt-6">
             <EvidenciasOrdem :id-ordem="osSelecionada.id_ordem_servico" somente-leitura />
+          </div>
+
+          <div v-if="assistenteDisponivel" class="mt-6">
+            <AssistenteTecnico :id-ordem="osSelecionada.id_ordem_servico" />
           </div>
         </div>
 
@@ -246,6 +255,7 @@ import GuiaChecklistPreventiva from '@/components/GuiaChecklistPreventiva.vue'
 import ConclusaoCorretivaForm from '@/components/ConclusaoCorretivaForm.vue'
 import PausaOrdemForm from '@/components/PausaOrdemForm.vue'
 import EvidenciasOrdem from '@/components/EvidenciasOrdem.vue'
+import AssistenteTecnico from '@/components/AssistenteTecnico.vue'
 import { ExecucaoError, concluirExecucao, iniciarExecucao, pausarExecucao } from '@/services/execucaoService'
 import type { DadosConclusao, DadosPausa, ErroExecucao, ErrosConclusao, RespostaExecucao } from '@/types/execucao'
 
@@ -285,6 +295,13 @@ const mensagemAcao = computed(() => {
     case 'AGUARDANDO_VALIDACAO': return 'Aguardando a validação do solicitante.'
     default: return 'Sem ações pendentes.'
   }
+})
+
+const STATUS_COM_ASSISTENTE = ['APROVADA', 'ATRIBUIDA', 'EM_EXECUCAO', 'PAUSADA', 'AGUARDANDO_MATERIAL', 'AGUARDANDO_TERCEIRO', 'AGUARDANDO_VALIDACAO', 'REABERTA']
+
+const assistenteDisponivel = computed(() => {
+  const os = osSelecionada.value
+  return !!os && os.tipo_manutencao === 'CORRETIVA' && STATUS_COM_ASSISTENTE.includes(os.status_ordem_servico)
 })
 
 const prediosUnicos = computed(() => {
