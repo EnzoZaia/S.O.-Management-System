@@ -144,11 +144,14 @@ INTERVALO_PREVENTIVA_DIAS = {
 INTERVALO_PREVENTIVA_PADRAO_DIAS = int(os.getenv('INTERVALO_PREVENTIVA_PADRAO_DIAS', 90))
 DIAS_ALERTA_PREVENTIVA_PROXIMA = int(os.getenv('DIAS_ALERTA_PREVENTIVA_PROXIMA', 7))
 
-ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY', '')
-ANTHROPIC_MODEL = os.getenv('ANTHROPIC_MODEL', 'claude-opus-5-5')
-ANTHROPIC_TIMEOUT_SEGUNDOS = float(os.getenv('ANTHROPIC_TIMEOUT_SEGUNDOS', 60))
-ANTHROPIC_MAX_RETRIES = int(os.getenv('ANTHROPIC_MAX_RETRIES', 2))
-ANTHROPIC_MAX_TOKENS = int(os.getenv('ANTHROPIC_MAX_TOKENS', 4000))
+IA_PROVEDOR = os.getenv('IA_PROVEDOR', 'gemini')
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
+GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-flash-lite-latest')
+GROK_API_KEY = os.getenv('GROK_API_KEY', '')
+GROK_MODEL = os.getenv('GROK_MODEL', 'grok-4.3')
+IA_TIMEOUT_SEGUNDOS = float(os.getenv('IA_TIMEOUT_SEGUNDOS', 60))
+IA_MAX_RETRIES = int(os.getenv('IA_MAX_RETRIES', 2))
+IA_MAX_TOKENS = int(os.getenv('IA_MAX_TOKENS', 4000))
 
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
