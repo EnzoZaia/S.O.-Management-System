@@ -32,14 +32,16 @@ SISTEMA_ASSISTENTE = (
     "comece a resposta dizendo claramente que não há base de conhecimento do fabricante para este equipamento "
     "e que a orientação é genérica. Não invente códigos de peça, valores de torque, pressões ou especificações "
     "que não estejam no contexto. Sempre lembre de desligar e bloquear a energia antes de intervir e de usar os EPIs "
-    "adequados. Se a pergunta não tiver relação com manutenção, diga que só pode ajudar com o atendimento técnico."
+    "adequados. Se a pergunta não tiver relação com manutenção, diga que só pode ajudar com o atendimento técnico. "
+    "Escreva em texto simples, sem Markdown (não use #, ** nem tabelas)."
 )
 
 SISTEMA_INTELLIGENCE = (
     "Você é um analista de gestão de manutenção predial. Você recebe apenas indicadores agregados e anonimizados "
     "de um período. Escreva em português do Brasil uma análise curta com três seções: 'Resumo do período', "
     "'Pontos de atenção' e 'Recomendações'. Cite os números usados. Não invente dados que não estejam nos indicadores; "
-    "quando um indicador vier nulo, diga que não há dados suficientes para ele."
+    "quando um indicador vier nulo, diga que não há dados suficientes para ele. "
+    "Escreva em texto simples, sem Markdown (não use #, ** nem tabelas); coloque cada título de seção sozinho em uma linha."
 )
 
 CHAVES_INDICADORES_IA = (
@@ -144,7 +146,7 @@ def _registrar_consulta(ordem_servico, usuario, manuais_carregados, pergunta, cl
         ordem_servico=ordem_servico,
         ativo_id=ordem_servico.ativo_id,
         manual=next((item['manual'] for item in manuais_carregados if item['bloco'] is not None), None),
-        provedor_ia=ClienteIA.PROVEDOR,
+        provedor_ia=cliente.provedor,
         modelo_ia=cliente.modelo[:60],
         pergunta=pergunta,
         status=STATUS_PROCESSANDO,
@@ -279,7 +281,7 @@ def gerar_insight(indicadores, gerente, cliente=None):
             gerente=gerente,
             dt_inicio_periodo=registros[0].dt_inicio_periodo if registros else timezone.localdate(),
             dt_fim_periodo=registros[0].dt_fim_periodo if registros else timezone.localdate(),
-            provedor_ia=ClienteIA.PROVEDOR,
+            provedor_ia=cliente.provedor,
             modelo_ia=cliente.modelo[:60],
             status=STATUS_PROCESSANDO,
         )

@@ -277,12 +277,30 @@
             </p>
             <div class="p-4 bg-gray-50 rounded-xl border border-gray-100 text-sm text-gray-700 whitespace-pre-wrap">{{ extrairProblema(osSelecionada?.descricao_servico) }}</div>
           </div>
+
+          <div v-if="osSelecionada?.alerta_preventiva" role="alert" data-testid="alerta-preventiva"
+            class="mt-4 text-xs font-semibold text-purple-800 bg-purple-50 border border-purple-200 rounded-xl px-4 py-3">
+            🗓️ {{ osSelecionada.alerta_preventiva.mensagem }}
+          </div>
+
+          <div v-if="reatribuindo" class="mt-6 rounded-2xl border border-amber-200 bg-amber-50/50 p-5 space-y-1.5" data-testid="painel-reatribuicao">
+            <label for="just-reatribuicao" class="text-xs font-bold text-amber-700 uppercase tracking-wider">Justificativa da reatribuição *</label>
+            <p class="text-xs text-gray-500">{{ osSelecionada?.tecnico_nome }} deixará de ser o responsável; ambos os técnicos serão notificados e o histórico será preservado.</p>
+            <textarea id="just-reatribuicao" v-model="justificativaReatribuicao" rows="3" :maxlength="JUSTIFICATIVA_REATRIBUICAO_MAX"
+              placeholder="Por que a ordem está sendo passada para outro técnico?"
+              :class="erroReatribuicao ? 'border-red-500 focus:ring-red-400' : 'border-gray-200 focus:ring-amber-500'"
+              class="w-full bg-white border text-gray-700 text-sm rounded-lg p-3 outline-none focus:ring-2 resize-none"></textarea>
+            <div class="flex justify-between text-[11px]">
+              <span class="text-red-600 font-medium">{{ erroReatribuicao }}</span>
+              <span class="text-gray-400 font-semibold">{{ justificativaReatribuicao.trim().length }}/{{ JUSTIFICATIVA_REATRIBUICAO_MAX }}</span>
+            </div>
+          </div>
         </div>
 
         <div class="p-6 border-t border-gray-100 bg-gray-50 flex flex-col sm:flex-row items-center justify-between gap-4 rounded-b-2xl shrink-0">
-          <div class="w-full sm:w-auto" v-if="osSelecionada?.status_ordem_servico === 'ABERTA' || osSelecionada?.status_ordem_servico === 'APROVADA'">
+          <div class="w-full sm:w-auto" v-if="osSelecionada?.status_ordem_servico === 'ABERTA' || aceitaAtribuicao">
             <div class="flex items-center gap-3">
-              <label class="text-[11px] font-bold text-gray-500 uppercase tracking-wider">{{ osSelecionada?.status_ordem_servico === 'ABERTA' ? 'Atribuir a (opcional):' : 'Atribuir a:' }}</label>
+              <label class="text-[11px] font-bold text-gray-500 uppercase tracking-wider">{{ osSelecionada?.status_ordem_servico === 'ABERTA' ? 'Atribuir a (opcional):' : osSelecionada?.tecnico_id ? 'Reatribuir a:' : 'Atribuir a:' }}</label>
               <select v-model="tecnicoSelecionado" class="bg-white border border-gray-200 text-gray-700 text-sm font-bold rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 shadow-sm cursor-pointer min-w-[180px]">
                 <option value="" disabled>Selecione um técnico...</option>
                 <option v-for="tec in tecnicosDisponiveis" :key="tec.id_usuario" :value="tec.id_usuario">{{ tec.nome }}</option>
@@ -303,9 +321,9 @@
               {{ salvandoTriagem ? 'Salvando...' : rotuloConfirmar }}
             </button>
 
-            <button v-if="osSelecionada?.status_ordem_servico === 'APROVADA'" @click="confirmarAtribuicao"
-              class="px-5 py-2.5 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors shadow-sm cursor-pointer flex items-center gap-2">
-              <span>✅</span> Salvar Atribuição
+            <button v-if="aceitaAtribuicao" @click="confirmarAtribuicao" :disabled="salvandoAtribuicao || !alterouTecnico"
+              class="px-5 py-2.5 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors shadow-sm cursor-pointer flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+              <span>✅</span> {{ salvandoAtribuicao ? 'Salvando...' : reatribuindo ? 'Reatribuir Técnico' : 'Salvar Atribuição' }}
             </button>
           </div>
         </div>
@@ -465,13 +483,17 @@ async function carregarTecnicos() {
   try {
     const response = await api.get('/usuario/', authHeader())
     const listaUsuarios = response.data.dados || response.data
-    tecnicosDisponiveis.value = listaUsuarios.filter((u: any) => u.grupo_descricao === 'TECNICO' || u.cargo === 'TECNICO')
+    tecnicosDisponiveis.value = listaUsuarios.filter((u: any) =>
+      (u.grupo_descricao === 'TECNICO' || u.cargo === 'TECNICO' || (Array.isArray(u.grupos) && u.grupos.includes('TECNICO'))) &&
+      u.ativo !== false && u.email_confirmado !== false)
   } catch (error) { console.error("Erro ao carregar técnicos:", error) }
 }
 
 function abrirModalDetalhes(os: any) {
   osSelecionada.value = os
   tecnicoSelecionado.value = os.tecnico_id || ''
+  justificativaReatribuicao.value = ''
+  erroReatribuicao.value = ''
   resetarTriagem(os)
   modalAberto.value = true
   if (tecnicosDisponiveis.value.length === 0) carregarTecnicos()
@@ -563,17 +585,52 @@ async function confirmarTriagem() {
   }
 }
 
-// Atribuição de técnico para ordens já APROVADAS
+const STATUS_QUE_ACEITAM_ATRIBUICAO = ['APROVADA', 'ATRIBUIDA', 'EM_EXECUCAO', 'AGUARDANDO_MATERIAL', 'AGUARDANDO_TERCEIRO', 'PAUSADA', 'REABERTA']
+const JUSTIFICATIVA_REATRIBUICAO_MIN = 10
+const JUSTIFICATIVA_REATRIBUICAO_MAX = 500
+
+const justificativaReatribuicao = ref('')
+const erroReatribuicao = ref('')
+const salvandoAtribuicao = ref(false)
+
+const aceitaAtribuicao = computed(() => STATUS_QUE_ACEITAM_ATRIBUICAO.includes(osSelecionada.value?.status_ordem_servico))
+const alterouTecnico = computed(() => !!tecnicoSelecionado.value && String(tecnicoSelecionado.value) !== String(osSelecionada.value?.tecnico_id ?? ''))
+const reatribuindo = computed(() => aceitaAtribuicao.value && !!osSelecionada.value?.tecnico_id && alterouTecnico.value)
+
 async function confirmarAtribuicao() {
+  if (salvandoAtribuicao.value) return
   if (!tecnicoSelecionado.value) {
     Swal.fire({ title: 'Atenção', text: 'Selecione um técnico antes de salvar a atribuição.', icon: 'warning' })
     return
   }
+  const justificativa = justificativaReatribuicao.value.trim()
+  if (reatribuindo.value && justificativa.length < JUSTIFICATIVA_REATRIBUICAO_MIN) {
+    erroReatribuicao.value = `Informe a justificativa da reatribuição (mínimo de ${JUSTIFICATIVA_REATRIBUICAO_MIN} caracteres).`
+    return
+  }
+  erroReatribuicao.value = ''
+  const eraReatribuicao = reatribuindo.value
+  salvandoAtribuicao.value = true
   try {
-    await api.patch(`/ordem-servico/${osSelecionada.value.id_ordem_servico}/atribuir-tecnico/`, { tecnico: tecnicoSelecionado.value }, authHeader())
-    Swal.fire({ title: 'Atribuída!', text: 'Técnico definido com sucesso.', icon: 'success', confirmButtonColor: '#2563eb', customClass: { confirmButton: 'cursor-pointer' } })
+    await api.patch(
+      `/ordem-servico/${osSelecionada.value.id_ordem_servico}/atribuir-tecnico/`,
+      { tecnico: tecnicoSelecionado.value, justificativa: eraReatribuicao ? justificativa : undefined },
+      authHeader(),
+    )
+    Swal.fire({
+      title: eraReatribuicao ? 'Reatribuída!' : 'Atribuída!',
+      text: eraReatribuicao ? 'O novo técnico foi vinculado e os envolvidos foram notificados.' : 'Técnico definido e notificado com sucesso.',
+      icon: 'success', confirmButtonColor: '#2563eb', customClass: { confirmButton: 'cursor-pointer' },
+    })
     fecharModal(); carregarOrdens()
-  } catch (error: any) { Swal.fire({ title: 'Erro', text: 'Falha ao atribuir técnico.', icon: 'error' }) }
+  } catch (error: any) {
+    const dados = error?.response?.data
+    const erroCampo = dados?.erros?.justificativa
+    if (erroCampo) erroReatribuicao.value = Array.isArray(erroCampo) ? erroCampo[0] : String(erroCampo)
+    Swal.fire({ title: 'Não foi possível atribuir', text: dados?.mensagem || dados?.detail || 'Falha ao atribuir técnico.', icon: 'error' })
+  } finally {
+    salvandoAtribuicao.value = false
+  }
 }
 
 function limparFiltros() {

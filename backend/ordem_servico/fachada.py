@@ -15,16 +15,11 @@ em que ordem e dentro de uma transação. Os subsistemas (Builder, Factory
 Method, Decorators, histórico) continuam independentes e testáveis sozinhos:
 a fachada não os substitui, só os coordena.
 """
-import logging
-
-from django.conf import settings
-from django.core.mail import send_mail
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from ativo.models import Ativo
 from ativo.services import alerta_preventiva_proxima
-from notificacao.services import TIPO_OS_ATRIBUIDA, TIPO_OS_REATRIBUIDA, notificar
 from perfil.equipes import ids_tecnicos_da_equipe, tecnico_atende
 from ordem_servico.builders import OrdemServicoDiretor
 from ordem_servico.constantes import (
@@ -43,7 +38,9 @@ from ordem_servico.constantes import (
     STATUS_FINAIS,
     status_para_api,
 )
+from ordem_servico.eventos import ServicoReprovado, TecnicoAtribuido, TecnicoReatribuido
 from ordem_servico.models import OrdemServico
+from ordem_servico.observadores import criar_publicador_padrao
 from ordem_servico.transicoes import ContextoTransicao, RegraTransicaoError, ValidadorTransicao
 from usuario.models import Usuario
 from ordem_servico.participacao import corretiva_ativa_do_ativo, os_esta_ativa, usuario_ja_vinculado
@@ -62,9 +59,6 @@ from utils.historico import (
 )
 from utils.permissions import usuario_tem_grupo
 from validacao.models import RESULTADO_APROVADA, RESULTADO_REPROVADA, EvidenciaValidacao, ValidacaoAtendimento
-
-logger = logging.getLogger(__name__)
-
 
 class OperacaoOrdemServicoError(Exception):
     """Regra de negócio violada numa operação da fachada; a mensagem vai direto para o cliente da API."""
@@ -117,10 +111,11 @@ class OrdemServicoFacade:
     MENSAGEM_REATRIBUICAO_SEM_JUSTIFICATIVA = "Informe a justificativa da reatribuição (mínimo de 10 caracteres)."
     STATUS_QUE_ACEITAM_ATRIBUICAO = (ABERTA, REABERTA, APROVADA, ATRIBUIDA, EM_EXECUCAO, AGUARDANDO_MATERIAL, AGUARDANDO_TERCEIRO, PAUSADA)
 
-    def __init__(self, diretor=None, resolver_fabrica_processador=obter_fabrica_processador, validador_transicao=None) -> None:
+    def __init__(self, diretor=None, resolver_fabrica_processador=obter_fabrica_processador, validador_transicao=None, publicador=None) -> None:
         self._diretor = diretor or OrdemServicoDiretor()
         self._resolver_fabrica_processador = resolver_fabrica_processador
         self._validador_transicao = validador_transicao or ValidadorTransicao()
+        self._publicador = publicador or criar_publicador_padrao()
 
     @staticmethod
     def esta_em_status_final(ordem_servico: OrdemServico) -> bool:
@@ -282,7 +277,6 @@ class OrdemServicoFacade:
         else:
             descricao = f"Técnico atribuído: {tecnico.nome}"
         registrar_atribuicao(ordem_servico, gestor, tecnico, descricao)
-        self._notificar_atribuicao(ordem_servico, tecnico, anterior_id, justificativa)
 
         if ordem_servico.status_ordem_servico == ABERTA:
             status_anterior = ordem_servico.status_ordem_servico
@@ -291,24 +285,15 @@ class OrdemServicoFacade:
             registrar_mudanca_status(ordem_servico, responsavel, status_anterior, APROVADA)
 
         ordem_servico.definir_responsaveis(tecnico, gestor)
-        return ordem_servico
-
-    @staticmethod
-    def _notificar_atribuicao(ordem_servico: OrdemServico, tecnico, anterior_id, justificativa: str) -> None:
-        resumo = (ordem_servico.descricao_servico or "")[:120]
-        notificar(
-            tecnico, TIPO_OS_ATRIBUIDA, f"OS #{ordem_servico.pk} atribuída a você",
-            f"A ordem de serviço #{ordem_servico.pk} foi atribuída a você. Problema: {resumo}",
-            ordem_servico,
-        )
         if anterior_id:
-            anterior = Usuario.objects.filter(pk=anterior_id).first()
-            if anterior is not None:
-                notificar(
-                    anterior, TIPO_OS_REATRIBUIDA, f"OS #{ordem_servico.pk} reatribuída",
-                    f"A ordem de serviço #{ordem_servico.pk} foi reatribuída para {tecnico.nome}. Justificativa: {justificativa}",
-                    ordem_servico,
-                )
+            evento = TecnicoReatribuido(
+                ordem_servico=ordem_servico, responsavel=responsavel, tecnico=tecnico,
+                tecnico_anterior=Usuario.objects.filter(pk=anterior_id).first(), justificativa=justificativa,
+            )
+        else:
+            evento = TecnicoAtribuido(ordem_servico=ordem_servico, responsavel=responsavel, tecnico=tecnico)
+        self._publicador.publicar(evento)
+        return ordem_servico
 
     @transaction.atomic
     def cancelar(self, ordem_servico: OrdemServico, usuario) -> OrdemServico:
@@ -377,7 +362,7 @@ class OrdemServicoFacade:
             ordem_servico, usuario, status_anterior, EM_EXECUCAO,
             f"Serviço reprovado por {usuario.nome}; retornou ao técnico {nome_tecnico}. Justificativa: {justificativa}",
         )
-        self._alertar_gestor_reprovacao(ordem_servico, usuario, justificativa)
+        self._publicador.publicar(ServicoReprovado(ordem_servico=ordem_servico, responsavel=usuario, justificativa=justificativa))
         return validacao
 
     @transaction.atomic
@@ -474,33 +459,6 @@ class OrdemServicoFacade:
     @staticmethod
     def _bloquear(ordem_servico: OrdemServico) -> OrdemServico:
         return OrdemServico.objects.select_for_update().get(pk=ordem_servico.pk)
-
-    @staticmethod
-    def _alertar_gestor_reprovacao(ordem_servico: OrdemServico, usuario, justificativa: str | None) -> None:
-        gestor = ordem_servico.gestor
-
-        if gestor is None:
-            registrar_historico(ordem_servico, usuario, "Alerta de reprovação: OS sem gestor definido; nenhum e-mail enviado.")
-            return
-
-        registrar_historico(ordem_servico, usuario, f"Alerta de reprovação enviado ao gestor {gestor.nome}.")
-
-        assunto = f"OS #{ordem_servico.pk} reprovada pelo solicitante - TechOrder"
-        mensagem = (
-            f"Olá, {gestor.nome}.\n\n"
-            f"A ordem de serviço #{ordem_servico.pk} foi reprovada por {usuario.nome} e voltou para execução.\n\n"
-            f"Justificativa: {justificativa}\n\n"
-            f"Acompanhe pelo sistema: {settings.FRONTEND_URL}"
-        )
-        email_gestor = gestor.email
-
-        def _enviar():
-            try:
-                send_mail(assunto, mensagem, None, [email_gestor], fail_silently=True)
-            except Exception:
-                logger.exception("Falha ao enviar alerta de reprovação da OS #%s.", ordem_servico.pk)
-
-        transaction.on_commit(_enviar)
 
     def _montar_processador(self, ordem_servico: OrdemServico, usuario, status_anterior: str) -> ProcessadorOrdemServico:
         """Factory Method escolhe o processador; a fachada o envolve em histórico e, por fora, em log."""

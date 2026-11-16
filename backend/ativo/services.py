@@ -3,7 +3,7 @@ from datetime import timedelta
 from django.conf import settings
 from django.utils import timezone
 
-from ativo.calendario_feriados import GerenciadorCalendarioFeriados
+from ativo.ajuste_calendario import resolver_estrategia_ajuste
 
 
 def intervalo_preventiva_dias(tipo_ativo, id_predio=None):
@@ -20,9 +20,9 @@ def intervalo_preventiva_dias(tipo_ativo, id_predio=None):
     return settings.INTERVALO_PREVENTIVA_DIAS.get(tipo_ativo, settings.INTERVALO_PREVENTIVA_PADRAO_DIAS)
 
 
-def calcular_proxima_preventiva(dt_ultima_preventiva, periodicidade_dias):
+def calcular_proxima_preventiva(dt_ultima_preventiva, periodicidade_dias, estrategia_ajuste=None):
     data_base = dt_ultima_preventiva + timedelta(days=periodicidade_dias)
-    return GerenciadorCalendarioFeriados.instancia().proximo_dia_util(data_base)
+    return (estrategia_ajuste or resolver_estrategia_ajuste()).ajustar(data_base)
 
 
 def recalcular_programacao(ativo, data_base=None):

@@ -1,15 +1,32 @@
+import hashlib
+import json
 import logging
+import socket
 import threading
+import urllib.error
+import urllib.request
 
-import anthropic
 from django.conf import settings
+from django.core.cache import cache as cache_padrao
+
+from inteligencia.provedores import (
+    MENSAGEM_INVALIDA,
+    ProvedorGemini,
+    ProvedorGrok,
+    ProvedorIA,
+    RespostaInvalidaError,
+    resolver_provedor,
+)
 
 logger = logging.getLogger(__name__)
 
-MODELOS_COM_FALLBACK = {'claude-opus-5-5', 'claude-opus-5', 'claude-fable-5-1', 'claude-sonnet-5-5'}
-BETA_FALLBACK = 'server-side-fallback-2026-07-01'
 MENSAGEM_INDISPONIVEL = "O serviço de inteligência artificial está indisponível no momento. Tente novamente mais tarde."
 MENSAGEM_NAO_CONFIGURADO = "O serviço de inteligência artificial não está configurado neste ambiente."
+
+PROVEDOR_GEMINI = ProvedorGemini.nome
+PROVEDOR_GROK = ProvedorGrok.nome
+
+STATUS_HTTP_REPETIVEIS = {408, 429, 500, 502, 503, 504}
 
 
 class IAIndisponivelError(Exception):
@@ -19,20 +36,41 @@ class IAIndisponivelError(Exception):
         self.invalida = invalida
 
 
+class FalhaTransporte(Exception):
+    def __init__(self, status=None):
+        super().__init__(f"Falha HTTP {status}" if status else "Falha de conexão")
+        self.status = status
+
+
+def enviar_http(url, cabecalhos, corpo, timeout):
+    requisicao = urllib.request.Request(
+        url,
+        data=json.dumps(corpo).encode('utf-8'),
+        headers={'Content-Type': 'application/json', **cabecalhos},
+        method='POST',
+    )
+    try:
+        with urllib.request.urlopen(requisicao, timeout=timeout) as resposta:
+            return json.loads(resposta.read().decode('utf-8'))
+    except urllib.error.HTTPError as erro:
+        raise FalhaTransporte(erro.code) from erro
+    except (urllib.error.URLError, TimeoutError, socket.timeout, ConnectionError, ValueError) as erro:
+        raise FalhaTransporte() from erro
+
+
 class ClienteIA:
-    PROVEDOR = 'anthropic'
     _instancia = None
     _trava = threading.Lock()
 
-    def __init__(self, fabrica_cliente=None):
-        self._fabrica_cliente = fabrica_cliente or self._criar_cliente_anthropic
-        self._cliente = None
+    def __init__(self, transporte=None, provedor: ProvedorIA | None = None):
+        self._transporte = transporte or enviar_http
+        self._provedor_fixo = provedor
 
     @classmethod
     def instancia(cls):
         with cls._trava:
             if cls._instancia is None:
-                cls._instancia = cls()
+                cls._instancia = ClienteIACacheProxy(cls())
             return cls._instancia
 
     @classmethod
@@ -40,68 +78,87 @@ class ClienteIA:
         with cls._trava:
             cls._instancia = None
 
-    @staticmethod
-    def configurado():
-        return bool(settings.ANTHROPIC_API_KEY)
+    @property
+    def estrategia(self) -> ProvedorIA:
+        return self._provedor_fixo or resolver_provedor()
 
     @property
-    def modelo(self):
-        return settings.ANTHROPIC_MODEL
+    def provedor(self) -> str:
+        return self.estrategia.nome
 
-    @staticmethod
-    def _criar_cliente_anthropic():
-        return anthropic.Anthropic(
-            api_key=settings.ANTHROPIC_API_KEY,
-            timeout=settings.ANTHROPIC_TIMEOUT_SEGUNDOS,
-            max_retries=settings.ANTHROPIC_MAX_RETRIES,
-        )
+    @property
+    def modelo(self) -> str:
+        return self.estrategia.modelo
 
-    def _obter_cliente(self):
-        if self._cliente is None:
-            self._cliente = self._fabrica_cliente()
-        return self._cliente
+    def configurado(self) -> bool:
+        return self.estrategia.configurado()
+
+    def _chamar(self, url, cabecalhos, corpo):
+        tentativas = 1 + max(settings.IA_MAX_RETRIES, 0)
+        for tentativa in range(1, tentativas + 1):
+            try:
+                return self._transporte(url, cabecalhos, corpo, settings.IA_TIMEOUT_SEGUNDOS)
+            except FalhaTransporte as erro:
+                repetivel = erro.status is None or erro.status in STATUS_HTTP_REPETIVEIS
+                logger.warning("Falha na chamada ao provedor de IA %s (tentativa %s): %s", self.provedor, tentativa, erro)
+                if not repetivel or tentativa == tentativas:
+                    raise IAIndisponivelError() from erro
 
     def gerar(self, sistema, conteudo, max_tokens=None):
-        if not self.configurado():
+        estrategia = self.estrategia
+        if not estrategia.configurado():
             raise IAIndisponivelError(MENSAGEM_NAO_CONFIGURADO)
 
-        parametros = {
-            'model': self.modelo,
-            'max_tokens': max_tokens or settings.ANTHROPIC_MAX_TOKENS,
-            'system': sistema,
-            'messages': [{'role': 'user', 'content': conteudo}],
-            'output_config': {'effort': 'medium'},
-        }
+        url, cabecalhos, corpo = estrategia.montar_requisicao(sistema, conteudo, max_tokens or settings.IA_MAX_TOKENS)
+        dados = self._chamar(url, cabecalhos, corpo)
+        if not isinstance(dados, dict):
+            raise IAIndisponivelError(MENSAGEM_INVALIDA, invalida=True)
 
         try:
-            cliente = self._obter_cliente()
-            if self.modelo in MODELOS_COM_FALLBACK:
-                resposta = cliente.beta.messages.create(betas=[BETA_FALLBACK], fallbacks='default', **parametros)
-            else:
-                resposta = cliente.messages.create(**parametros)
-        except anthropic.APITimeoutError as erro:
-            logger.warning("Tempo esgotado na chamada ao provedor de IA: %s", erro)
-            raise IAIndisponivelError() from erro
-        except anthropic.APIConnectionError as erro:
-            logger.warning("Falha de conexão com o provedor de IA: %s", erro)
-            raise IAIndisponivelError() from erro
-        except anthropic.RateLimitError as erro:
-            logger.warning("Limite de uso do provedor de IA atingido: %s", erro)
-            raise IAIndisponivelError() from erro
-        except anthropic.APIStatusError as erro:
-            logger.warning("Provedor de IA respondeu com erro %s: %s", erro.status_code, erro)
-            raise IAIndisponivelError() from erro
-        except anthropic.AnthropicError as erro:
-            logger.warning("Erro do SDK do provedor de IA: %s", erro)
-            raise IAIndisponivelError() from erro
-
-        if getattr(resposta, 'stop_reason', None) == 'refusal':
-            raise IAIndisponivelError("O serviço de inteligência artificial não pôde responder a esta solicitação.", invalida=True)
-
-        texto = '\n'.join(
-            bloco.text for bloco in getattr(resposta, 'content', []) or []
-            if getattr(bloco, 'type', None) == 'text' and getattr(bloco, 'text', None)
-        ).strip()
+            texto = estrategia.extrair_texto(dados)
+        except RespostaInvalidaError as erro:
+            raise IAIndisponivelError(erro.mensagem, invalida=True) from erro
         if not texto:
-            raise IAIndisponivelError("O serviço de inteligência artificial retornou uma resposta vazia ou inválida.", invalida=True)
+            raise IAIndisponivelError(MENSAGEM_INVALIDA, invalida=True)
         return texto
+
+
+class ClienteIACacheProxy:
+    PREFIXO_CHAVE = 'techorder:ia:'
+
+    def __init__(self, cliente: ClienteIA, cache=None, segundos=None):
+        self._cliente = cliente
+        self._cache = cache or cache_padrao
+        self._segundos = segundos
+
+    @property
+    def provedor(self) -> str:
+        return self._cliente.provedor
+
+    @property
+    def modelo(self) -> str:
+        return self._cliente.modelo
+
+    def configurado(self) -> bool:
+        return self._cliente.configurado()
+
+    def _validade(self) -> int:
+        return settings.IA_CACHE_SEGUNDOS if self._segundos is None else self._segundos
+
+    def _chave(self, sistema, conteudo, max_tokens) -> str:
+        assinatura = json.dumps([self.provedor, self.modelo, sistema, conteudo, max_tokens], ensure_ascii=False, sort_keys=True, default=str)
+        return self.PREFIXO_CHAVE + hashlib.sha256(assinatura.encode('utf-8')).hexdigest()
+
+    def gerar(self, sistema, conteudo, max_tokens=None):
+        validade = self._validade()
+        if validade <= 0:
+            return self._cliente.gerar(sistema, conteudo, max_tokens)
+
+        chave = self._chave(sistema, conteudo, max_tokens)
+        resposta = self._cache.get(chave)
+        if resposta is not None:
+            return resposta
+
+        resposta = self._cliente.gerar(sistema, conteudo, max_tokens)
+        self._cache.set(chave, resposta, validade)
+        return resposta

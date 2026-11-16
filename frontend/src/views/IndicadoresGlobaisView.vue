@@ -87,6 +87,10 @@
         <PrediosOcorrencias :predios="indicadores.porPredio" />
       </div>
 
+      <div class="mb-6">
+        <TechOrderIntelligence :consulta="consultaAplicada" :desabilitado="loading || !!erroPeriodo" />
+      </div>
+
       <details class="bg-white rounded-xl p-6 shadow-sm border border-gray-100" data-testid="formulas">
         <summary class="text-sm font-bold text-gray-800 uppercase tracking-wider cursor-pointer">📐 Como cada indicador é calculado</summary>
         <dl class="mt-4 space-y-3">
@@ -104,8 +108,9 @@
 import { computed, onMounted, ref } from 'vue'
 import BarrasDistribuicao from '@/components/BarrasDistribuicao.vue'
 import PrediosOcorrencias from '@/components/PrediosOcorrencias.vue'
+import TechOrderIntelligence from '@/components/TechOrderIntelligence.vue'
 import { IndicadoresGlobaisError, buscarIndicadoresGlobais } from '@/services/indicadoresGlobaisService'
-import type { ChaveIndicador, ErroGlobais, IndicadoresGlobais, PeriodoGlobal } from '@/types/indicadoresGlobais'
+import type { ChaveIndicador, ConsultaIndicadores, ErroGlobais, IndicadoresGlobais, PeriodoGlobal } from '@/types/indicadoresGlobais'
 import {
   DOCUMENTACAO_INDICADORES, PERIODOS_GLOBAIS, TOP_DISTRIBUICAO, formatarDataCurta, formatarMttr,
   formatarPercentual, formatarSatisfacao, formulaDe, validarIntervalo,
@@ -118,6 +123,7 @@ const indicadores = ref<IndicadoresGlobais | null>(null)
 const loading = ref(true)
 const erro = ref<ErroGlobais | null>(null)
 const erroPeriodo = ref('')
+const consultaAplicada = ref<ConsultaIndicadores>({ periodo: '30d' })
 let ultimaRequisicao = 0
 
 async function carregar(manual = false) {
@@ -136,6 +142,7 @@ async function carregar(manual = false) {
     const dados = await buscarIndicadoresGlobais({ periodo: periodo.value, inicio: inicio.value, fim: fim.value })
     if (requisicao !== ultimaRequisicao) return // resposta antiga (período trocado no meio)
     indicadores.value = dados
+    consultaAplicada.value = { periodo: periodo.value, inicio: inicio.value, fim: fim.value }
     erro.value = null
   } catch (e) {
     if (requisicao !== ultimaRequisicao) return
