@@ -1,32 +1,17 @@
-import logging
-
-from django.conf import settings
-from django.core.mail import send_mail
-from django.db import transaction
-
-from notificacao.models import Notificacao
-
-logger = logging.getLogger(__name__)
+from notificacao.canais import CanalComposto, CanalEmail, CanalSistema, Mensagem
 
 TIPO_OS_ATRIBUIDA = 'OS_ATRIBUIDA'
 TIPO_OS_REATRIBUIDA = 'OS_REATRIBUIDA'
+TIPO_OS_REPROVADA = 'OS_REPROVADA'
 
 
-def notificar(usuario, tipo, titulo, mensagem, ordem_servico=None, enviar_email=True):
-    notificacao = Notificacao.objects.create(
-        usuario=usuario, ordem_servico=ordem_servico, tipo=tipo, titulo=titulo, mensagem=mensagem,
-    )
+def criar_canal(enviar_email=True):
+    canal = CanalComposto([CanalSistema()])
+    if enviar_email:
+        canal.adicionar(CanalEmail())
+    return canal
 
-    if enviar_email and usuario.email:
-        destinatario = usuario.email
-        corpo = f"{mensagem}\n\nAcompanhe pelo sistema: {settings.FRONTEND_URL}"
 
-        def _enviar():
-            try:
-                send_mail(f"{titulo} - TechOrder", corpo, None, [destinatario], fail_silently=True)
-            except Exception:
-                logger.exception("Falha ao enviar a notificação #%s por e-mail.", notificacao.pk)
-
-        transaction.on_commit(_enviar)
-
-    return notificacao
+def notificar(usuario, tipo, titulo, mensagem, ordem_servico=None, enviar_email=True, canal=None):
+    canal = canal or criar_canal(enviar_email)
+    return canal.enviar(Mensagem(destinatario=usuario, tipo=tipo, titulo=titulo, texto=mensagem, ordem_servico=ordem_servico))

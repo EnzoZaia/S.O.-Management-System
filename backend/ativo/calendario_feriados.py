@@ -33,3 +33,8 @@ class GerenciadorCalendarioFeriados(metaclass=_SingletonMeta):
         while self.eh_dia_nao_util(data):
             data += timedelta(days=1)
         return data
+
+    def dia_util_anterior(self, data: date) -> date:
+        while self.eh_dia_nao_util(data):
+            data -= timedelta(days=1)
+        return data

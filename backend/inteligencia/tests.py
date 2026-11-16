@@ -1,6 +1,5 @@
 import base64
 import json
-
 import pytest
 from rest_framework.test import APIClient
 
@@ -346,3 +345,76 @@ def test_insight_com_falha_fica_registrado_como_indisponivel(ia, os_corretiva):
     insight = InsightGerencial.objects.get()
     assert insight.status == "INDISPONIVEL" and insight.conteudo is None
     assert insight.indicadores.exists()
+
+
+def test_proxy_de_cache_evita_chamada_repetida_e_nao_guarda_falhas(settings):
+    from django.core.cache import cache
+
+    from inteligencia.cliente import ClienteIACacheProxy
+
+    cache.clear()
+    settings.IA_PROVEDOR = "gemini"
+    settings.GEMINI_API_KEY = "chave"
+    falso = TransporteFalso()
+    proxy = ClienteIACacheProxy(ClienteIA(transporte=falso), segundos=60)
+
+    assert proxy.gerar("sistema", "mesma pergunta") == proxy.gerar("sistema", "mesma pergunta")
+    assert len(falso.chamadas) == 1
+    proxy.gerar("sistema", "outra pergunta")
+    assert len(falso.chamadas) == 2
+    assert (proxy.provedor, proxy.modelo, proxy.configurado()) == ("gemini", settings.GEMINI_MODEL, True)
+
+    falso.erro = FalhaTransporte(400)
+    with pytest.raises(IAIndisponivelError):
+        proxy.gerar("sistema", "pergunta com falha")
+    falso.erro = None
+    proxy.gerar("sistema", "pergunta com falha")
+    assert len(falso.chamadas) == 4
+
+
+def test_proxy_sem_validade_sempre_delega(settings):
+    from inteligencia.cliente import ClienteIACacheProxy
+
+    settings.IA_PROVEDOR = "gemini"
+    settings.GEMINI_API_KEY = "chave"
+    falso = TransporteFalso()
+    proxy = ClienteIACacheProxy(ClienteIA(transporte=falso), segundos=0)
+
+    proxy.gerar("sistema", "pergunta")
+    proxy.gerar("sistema", "pergunta")
+
+    assert len(falso.chamadas) == 2
+
+
+def test_instancia_padrao_e_o_proxy_de_cache():
+    from inteligencia.cliente import ClienteIACacheProxy
+
+    ClienteIA.resetar_instancia()
+    try:
+        assert isinstance(ClienteIA.instancia(), ClienteIACacheProxy)
+    finally:
+        ClienteIA.resetar_instancia()
+
+
+def test_novo_provedor_entra_sem_alterar_o_cliente(settings, monkeypatch):
+    from inteligencia import provedores
+
+    class ProvedorEco(provedores.ProvedorIA):
+        nome = "eco"
+        modelo = "eco-1"
+        chave = "chave-eco"
+
+        def montar_requisicao(self, sistema, conteudo, max_tokens):
+            return "https://eco.local", {}, {"texto": conteudo}
+
+        def extrair_texto(self, dados):
+            return dados["eco"]
+
+    monkeypatch.setattr(provedores, "PROVEDORES", dict(provedores.PROVEDORES))
+    provedores.registrar_provedor(ProvedorEco)
+    settings.IA_PROVEDOR = "eco"
+
+    cliente = ClienteIA(transporte=lambda url, cabecalhos, corpo, timeout: {"eco": corpo["texto"].upper()})
+
+    assert cliente.gerar("sistema", "funciona") == "FUNCIONA"
+    assert (cliente.provedor, cliente.modelo) == ("eco", "eco-1")
