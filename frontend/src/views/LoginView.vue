@@ -105,7 +105,7 @@ async function fazerLogin() {
         } else if (dadosUsuario.grupos.includes('GESTOR')) {
             router.push('/dashboard-gestor/indicadores')
         } else if (dadosUsuario.grupos.includes('TECNICO')) {
-            router.push('/dashboard-tecnico/ordens')
+            router.push('/dashboard-tecnico/indicadores')
         } else {
             router.push('/dashboard-solicitante/portal')
         }

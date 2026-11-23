@@ -93,8 +93,12 @@ const router = createRouter({
     {
       path: '/dashboard-tecnico',
       component: () => import('@/views/DashboardTecnicoView.vue'),
-      redirect: '/dashboard-tecnico/ordens',
+      redirect: '/dashboard-tecnico/indicadores',
       children: [
+        {
+          path: 'indicadores',
+          component: () => import('@/views/IndicadoresTecnicoView.vue'),
+        },
         {
           path: 'ordens',
           component: () => import('@/views/OrdensTecnicoView.vue'),

@@ -19,6 +19,15 @@
     </div>
 
     <nav class="flex-1 px-3 py-6 flex flex-col gap-1.5 overflow-x-hidden">
+      <button @click="router.push('/dashboard-tecnico/indicadores')"
+        :class="[
+          'flex items-center gap-4 px-3 py-3 rounded-xl cursor-pointer transition-all duration-200 group',
+          route.path.includes('indicadores') ? 'bg-blue-600/50 text-white font-semibold shadow-inner' : 'text-blue-200 hover:bg-blue-800/50 hover:text-white'
+        ]">
+        <span class="text-xl w-8 text-center shrink-0">📊</span>
+        <span class="text-sm whitespace-nowrap transition-all duration-300" :class="isExpanded ? 'opacity-100' : 'opacity-0 w-0'">Meu Desempenho</span>
+      </button>
+
       <button @click="router.push('/dashboard-tecnico/ordens')"
         :class="[
           'flex items-center gap-4 px-3 py-3 rounded-xl cursor-pointer transition-all duration-200 group',
