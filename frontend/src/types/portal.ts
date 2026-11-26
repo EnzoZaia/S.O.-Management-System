@@ -23,7 +23,11 @@ export interface OrdemPortal {
   localizacao_nome?: string
   tecnico?: number | null
   tecnico_nome?: string
-  
+
+  ativo?: number | null
+  ativo_nome?: string | null
+  ativo_patrimonio?: string | null
+
   vinculo_presenciei?: boolean
 }
 

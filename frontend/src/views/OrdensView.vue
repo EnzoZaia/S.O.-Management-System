@@ -204,6 +204,11 @@
               <p class="text-sm font-bold text-gray-800">{{ osSelecionada?.tecnico_nome || 'Nenhum técnico atribuído' }}</p>
             </div>
           </div>
+
+          <!-- Equipamento aberto para manutenção -->
+          <div class="mt-6">
+            <EquipamentoOrdem :ordem="osSelecionada" />
+          </div>
           
           <div class="mt-6">
             <p class="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2">
@@ -232,6 +237,7 @@
 import { ref, computed, onMounted } from 'vue'
 import api from '@/services/api'
 import EvidenciasOrdem from '@/components/EvidenciasOrdem.vue'
+import EquipamentoOrdem from '@/components/EquipamentoOrdem.vue'
 
 const abaAtiva = ref('CORRETIVA')
 

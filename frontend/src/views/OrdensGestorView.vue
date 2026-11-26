@@ -271,6 +271,11 @@
             </div>
           </div>
 
+          <!-- Equipamento aberto para manutenção -->
+          <div class="mt-6">
+            <EquipamentoOrdem :ordem="osSelecionada" />
+          </div>
+
           <div class="mt-6">
             <p class="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2">
               {{ osSelecionada?.tipo_manutencao === 'PREVENTIVA' ? 'Roteiro de Inspeção Programada' : 'Descrição do Problema Reportado' }}
@@ -337,6 +342,7 @@ import { ref, computed, onMounted } from 'vue'
 import api from '@/services/api'
 import Swal from 'sweetalert2'
 import EvidenciasOrdem from '@/components/EvidenciasOrdem.vue'
+import EquipamentoOrdem from '@/components/EquipamentoOrdem.vue'
 import { TriagemError, decidirTriagem } from '@/services/triagemService'
 import type { DecisaoTriagem, ErroTriagem, ErrosTriagem, FormularioTriagem } from '@/types/triagem'
 import {

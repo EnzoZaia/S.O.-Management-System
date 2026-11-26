@@ -145,6 +145,8 @@
               <p class="text-sm font-bold text-gray-800">{{ selecionada.prioridade_urgencia === 'SIM' ? '🚨 Urgente' :
                 'Normal' }}</p>
             </div>
+            <!-- Equipamento aberto para manutenção -->
+            <EquipamentoOrdem :ordem="selecionada" class="md:col-span-2" />
           </div>
 
           <div>
@@ -205,6 +207,7 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import Swal from 'sweetalert2'
 import EvidenciasOrdem from '@/components/EvidenciasOrdem.vue'
+import EquipamentoOrdem from '@/components/EquipamentoOrdem.vue'
 import ValidacaoServicoModal from '@/components/ValidacaoServicoModal.vue'
 import EstrelasAvaliacao from '@/components/EstrelasAvaliacao.vue'
 import {
