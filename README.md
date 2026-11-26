@@ -218,6 +218,55 @@ npm install
 
 ---
 
+# ▶️ Como rodar o sistema localmente
+
+### Pré-requisitos
+- Python 3.12 ou superior
+- Node.js LTS
+- Acesso à internet (o banco fica no Supabase e a IA no Google Gemini)
+
+### 1. Backend (Django)
+```sh
+cd backend
+python -m venv venv
+venv\Scripts\activate        # Windows
+# source venv/bin/activate   # Linux/macOS
+pip install -r requirements.txt
+```
+
+Crie o arquivo `backend/.env` copiando o `backend/.env.example` e preencha:
+- `SECRET_KEY` e as variáveis `DB_*` com as credenciais do Supabase do projeto (pedir ao DBA);
+- `IA_PROVEDOR=gemini` e `GEMINI_API_KEY` com uma chave gratuita gerada em https://aistudio.google.com/apikey;
+- as demais variáveis podem ficar com os valores do exemplo.
+
+Suba o servidor:
+```sh
+python manage.py runserver
+```
+A API fica em http://127.0.0.1:8000.
+
+### 2. Front-end (Vue)
+Em outro terminal:
+```sh
+cd frontend
+npm install
+npm run dev
+```
+Acesse http://localhost:5173.
+
+### 3. Testes automatizados do backend
+```sh
+cd backend
+python -m pytest
+```
+Os testes usam SQLite em memória e não chamam a IA nem enviam e-mail de verdade.
+
+### Observações
+- Sem `GEMINI_API_KEY`, o sistema funciona normalmente; apenas o Assistente Técnico e o TechOrder Intelligence ficam indisponíveis.
+- O plano gratuito do Gemini tem limite de requisições por minuto; as respostas da IA ficam em cache por 10 minutos (`IA_CACHE_SEGUNDOS`).
+
+---
+
 # 👨‍💻 Equipe do Projeto
 
 Projeto desenvolvido pelos alunos do curso de **Sistemas de Informação – FHO**
